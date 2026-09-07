@@ -1,0 +1,31 @@
+{
+  "artifact_schema_version": 1,
+  "capacity_revenue_eur": 35538.933883236255,
+  "diagnostics": {
+    "simultaneous_interval_energy_net_eur": 41901.090335225665
+  },
+  "duration_hours": 8760.0,
+  "e_max_mwh": 4.444444444444445,
+  "energy_gross_eur": 74322.97770725358,
+  "grid_charging_cost_eur": 14495.255897334675,
+  "interval_count": 35040,
+  "market": "mfrr",
+  "market_energy_net_eur": 59827.721809918905,
+  "n_pump_ramp_up_vars": 35040,
+  "n_turbine_ramp_up_vars": 0,
+  "pumped_mwh": 836.3112646819354,
+  "pv_available_mwh": 454.8835433743757,
+  "pv_curtailed_mwh": 106.10134493791253,
+  "pv_exported_mwh": 341.48347762468256,
+  "pv_revenue_eur": 20604.585013937678,
+  "pv_self_consumed_mwh": 7.2987208117805995,
+  "reservoir_final_mwh": 2.2222222222222223,
+  "reservoir_initial_mwh": 2.2222222222222223,
+  "run_id": "demo-2025-all-markets-pv500-mfrr-f2e4d0c55ea7",
+  "simultaneous_interval_count": 613,
+  "simultaneous_overlap_mwh": 51.77628068986395,
+  "simultaneous_pump_mwh": 53.40047821640565,
+  "simultaneous_turbine_mwh": 150.03939895849237,
+  "total_site_revenue_eur": 115971.24070709283,
+  "turbined_mwh": 247.78592736864033
+}

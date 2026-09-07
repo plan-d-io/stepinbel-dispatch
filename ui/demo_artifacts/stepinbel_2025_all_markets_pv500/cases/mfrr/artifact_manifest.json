@@ -1,0 +1,91 @@
+{
+  "artifact_schema_version": 1,
+  "entries": [
+    {
+      "byte_size": 104098,
+      "filename": "capacity.csv",
+      "sha256": "b6c80a6059d5b6c43acc21b7faecf1204f7d7ff1dc42978361e3458e06df4653"
+    },
+    {
+      "byte_size": 26842,
+      "filename": "capacity.parquet",
+      "sha256": "9c4c8be8ff6017fdfc2f5ea71a02894d4e4817a574be59ac96a7fd47d1f24a0c"
+    },
+    {
+      "byte_size": 5464210,
+      "filename": "dispatch.csv",
+      "sha256": "071d656e6951476fe745e8b155732e617652967f40a82255567e8ded27d61b5c"
+    },
+    {
+      "byte_size": 1262721,
+      "filename": "dispatch.parquet",
+      "sha256": "4c9c7c96fa39fec37ee59f1c12f0432193c2705aa673cad3dadf74905aa57eba"
+    },
+    {
+      "byte_size": 3850,
+      "filename": "monthly_summary.csv",
+      "sha256": "fb589208d167536c88b3e49af9f62ea494794ce51d95ee760d4bf99d80422e98"
+    },
+    {
+      "byte_size": 7999,
+      "filename": "monthly_summary.parquet",
+      "sha256": "00fddb1abed7ae391a5ed41bcd0541bd75318cad0c7f702666fa10080c5d65e0"
+    },
+    {
+      "byte_size": 3004,
+      "filename": "report.txt",
+      "sha256": "3c795af1873ed7b2a6ef1fdacc20fe2928eaabcd2a0a67a5342b0c317c8a8dd9"
+    },
+    {
+      "byte_size": 1741,
+      "filename": "resolved_config.json",
+      "sha256": "79dddeb84025bb1f2eb203f108b17947d7ba7e366f7519ab6e53824a4cae0b03"
+    },
+    {
+      "byte_size": 824,
+      "filename": "run.log",
+      "sha256": "a6c1a0229a2238093ed9c4b671d238dfb298aebe0ed4ea2878aef0774f3075a3"
+    },
+    {
+      "byte_size": 3599,
+      "filename": "run_events.jsonl",
+      "sha256": "789b9710daf2e6171adfb887b59291b4cecbe5edd749d7092566ddd4d848ce9b"
+    },
+    {
+      "byte_size": 4867,
+      "filename": "run_metadata.json",
+      "sha256": "e2bf6a9b4eb6c23f098af9035c33bdf37315c319e2a0b9589f5bcefd3d4cded6"
+    },
+    {
+      "byte_size": 1871,
+      "filename": "run_request.json",
+      "sha256": "c77afb542106cd0262ac02dcca1072cde9be6a725e9b8169ef6fdf40c93a1944"
+    },
+    {
+      "byte_size": 456,
+      "filename": "run_status.json",
+      "sha256": "1962b24fa62d18a660bfb0f4013a2fe11714ccca39a3bd333c5d6b4bf4ea44bf"
+    },
+    {
+      "byte_size": 923,
+      "filename": "summary.csv",
+      "sha256": "abd967a1084a4171d8ad1fbfd8224a6dc81f5b8195f96d3336b112b31f4abb90"
+    },
+    {
+      "byte_size": 1143,
+      "filename": "summary.json",
+      "sha256": "42b9b5bbd3c7d837fec808d3716997d08cdf2c011091cbc2724dcf7bb958bb7b"
+    },
+    {
+      "byte_size": 652,
+      "filename": "yearly_summary.csv",
+      "sha256": "a302168302c64fc0be9ee73d1ba617bbccda53ff8f08f243f974ba2525be895c"
+    },
+    {
+      "byte_size": 6411,
+      "filename": "yearly_summary.parquet",
+      "sha256": "dbce5de8aa913cc2d20a5002cafcfd45e0cc7b76c7f6fa2552b2f65625723a12"
+    }
+  ],
+  "run_id": "demo-2025-all-markets-pv500-mfrr-f2e4d0c55ea7"
+}

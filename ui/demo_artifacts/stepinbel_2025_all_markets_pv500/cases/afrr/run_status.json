@@ -1,0 +1,14 @@
+{
+  "artifact_schema_version": 1,
+  "completed_at_utc": "2026-09-04T22:18:25Z",
+  "current_stage": "verify_artifacts",
+  "elapsed_seconds": 6.3957768000000215,
+  "error_category": null,
+  "error_message": null,
+  "message": "completed verify_artifacts",
+  "run_id": "demo-2025-all-markets-pv500-afrr-05c93fc8b8fb",
+  "started_at_utc": "2026-09-04T22:18:19Z",
+  "state": "completed",
+  "status_schema_version": 1,
+  "updated_at_utc": "2026-09-04T22:18:25Z"
+}

@@ -1,0 +1,91 @@
+{
+  "artifact_schema_version": 1,
+  "entries": [
+    {
+      "byte_size": 130,
+      "filename": "capacity.csv",
+      "sha256": "8b2826ed483de500ae61e25873e4bcd2143b7448f0ca4c92972f7a935b0a8207"
+    },
+    {
+      "byte_size": 1817,
+      "filename": "capacity.parquet",
+      "sha256": "14724922d812e733935bde5d7b2730b8ce2a40a75e21e5451a94fbbc4a3867a2"
+    },
+    {
+      "byte_size": 5512316,
+      "filename": "dispatch.csv",
+      "sha256": "851f093c94c686f0c5568b24a8828e776e0d6048b2c993a64232140ca01b328a"
+    },
+    {
+      "byte_size": 1667252,
+      "filename": "dispatch.parquet",
+      "sha256": "e613f923928bcc2d13ac06062b827d2840bf8bc24c967c8c467186dd0d82ec74"
+    },
+    {
+      "byte_size": 3364,
+      "filename": "monthly_summary.csv",
+      "sha256": "4de4a8c4268f2ed5a20e52c66079907e2de2d83317829aa66be9223dcc39bdff"
+    },
+    {
+      "byte_size": 7677,
+      "filename": "monthly_summary.parquet",
+      "sha256": "4e944bdff8aff96f0c82a0dd3c9128b28af5a2c2eaf282132432c8bbd4b512d0"
+    },
+    {
+      "byte_size": 2763,
+      "filename": "report.txt",
+      "sha256": "8184de9ec4332d3cabe8d136fbd933ee6d6259c8baea25521c099d3ac3723fc4"
+    },
+    {
+      "byte_size": 1567,
+      "filename": "resolved_config.json",
+      "sha256": "a3aca0d55af169c3782d6a680b08a06462a7b6801118bfb8d2ba95c32c9c61d3"
+    },
+    {
+      "byte_size": 824,
+      "filename": "run.log",
+      "sha256": "27b0ef0808a117fb2c36d34b9f787b4ed0b8d62946bdce34d5dee4a81149b931"
+    },
+    {
+      "byte_size": 3575,
+      "filename": "run_events.jsonl",
+      "sha256": "eceb693089c6084e1138cac486f3e4cb7f7eaa9355aac729dfdc1d0a4e03bc67"
+    },
+    {
+      "byte_size": 4727,
+      "filename": "run_metadata.json",
+      "sha256": "b7da255e201f9c2162eb28b696e42f73280cec3c732b69b8b493a71a4258ff11"
+    },
+    {
+      "byte_size": 1695,
+      "filename": "run_request.json",
+      "sha256": "905ece11bfab9975fdbd7a616512f6caa945b8fdbe6c7582a9ad26cbd43dcaa3"
+    },
+    {
+      "byte_size": 455,
+      "filename": "run_status.json",
+      "sha256": "367f9f6bf9e325a75e1f94856396bea7e05d0d1057b1d5abc632faf3858e7224"
+    },
+    {
+      "byte_size": 878,
+      "filename": "summary.csv",
+      "sha256": "9b0fd77e840e057dc346f7faba1779dd4d843d596ee919b1823ef2e057a804e9"
+    },
+    {
+      "byte_size": 1098,
+      "filename": "summary.json",
+      "sha256": "78ffbb6cb77ece43c5408ab93e7d460495d9910f560c6ecfc5bba0a0d8709c2d"
+    },
+    {
+      "byte_size": 629,
+      "filename": "yearly_summary.csv",
+      "sha256": "1acf5ced45eb4a986d0daa5870f366e8ade614dfaac340169cdc40e20d4764c7"
+    },
+    {
+      "byte_size": 6411,
+      "filename": "yearly_summary.parquet",
+      "sha256": "b5b5907f88f23c5e2e59c1378643004ab49031bcb8b6104ba3e519953b0b2a07"
+    }
+  ],
+  "run_id": "demo-2025-all-markets-pv500-da-95a81c5b52a3"
+}

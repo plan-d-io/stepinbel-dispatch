@@ -1,0 +1,141 @@
+{
+  "artifact_schema_version": 1,
+  "behavioural_baseline": {
+    "commit": "82691dad676f85bfd345670fb8022de079ca5578",
+    "project": "PHS",
+    "tag": "phs-mvp-0.1.0"
+  },
+  "event_schema_version": 1,
+  "feasibility": {
+    "max_balance_residual_mwh": 4.440892098500626e-15,
+    "max_bound_residual": 0.0,
+    "max_capacity_residual": 0.0,
+    "max_grid_residual_mw": 0.0,
+    "max_initial_terminal_residual_mwh": 0.0,
+    "max_interval_accounting_residual_eur": 0.0,
+    "max_objective_residual_eur": 3.5943230614066124e-09,
+    "max_pv_residual_mw": 1.1102230246251565e-16,
+    "max_ramp_residual_mw": 9.349102402027484e-08,
+    "max_summary_accounting_residual_eur": 0.0,
+    "ok": true
+  },
+  "interval_count": 35040,
+  "market": "mfrr",
+  "methodology_reference": {
+    "filename": "mFRR_260925.pdf",
+    "market": "mfrr",
+    "sha256": "AEEDCB9480E224ADA0879FF0761F847BAA65141086857594CD79A6CED14E6165",
+    "statement": "Elia Watts.Happening methodology reference, not an exact conformance claim."
+  },
+  "parity_statement": "These are methodology references, not exact Watts.Happening-conformance claims.",
+  "published_data": {
+    "data_vintage": "2026-08-14T17:18:21Z",
+    "manifest_sha256": "e13a1ab320201babf11aad8d047cb58079efa9e644a1a1b77fff16527a0a94a6",
+    "pipeline_git_commit": "8208d06",
+    "pipeline_version": "1.0.0",
+    "required_sources": [
+      "da_prices_qh",
+      "balancing_qh",
+      "capacity_blocks.mfrr",
+      "pv_profile_qh"
+    ],
+    "tables": {
+      "balancing_qh": {
+        "actual_sha256": "4826c208305523a9e6ae033a40f26032519850548c533f3363967b88b60e9094",
+        "expected_sha256": "4826c208305523a9e6ae033a40f26032519850548c533f3363967b88b60e9094",
+        "manifest_row_count": 78144,
+        "parquet_row_count": 78144
+      },
+      "capacity_bids": {
+        "actual_sha256": "02046aebd1a69cf4809c4aa9f3a61c8a8367b016ca750dcb9df9677d72ea5f80",
+        "expected_sha256": "02046aebd1a69cf4809c4aa9f3a61c8a8367b016ca750dcb9df9677d72ea5f80",
+        "manifest_row_count": 3699211,
+        "parquet_row_count": 3699211
+      },
+      "capacity_blocks": {
+        "actual_sha256": "f55ce1b54c1c92df7cff2033058bfd20246f260794dae65b04e9282e31ab114b",
+        "expected_sha256": "f55ce1b54c1c92df7cff2033058bfd20246f260794dae65b04e9282e31ab114b",
+        "manifest_row_count": 62196,
+        "parquet_row_count": 62196
+      },
+      "da_prices_qh": {
+        "actual_sha256": "20d11bf9d3296412b7ae24fef8972d30bc7b8b8977dff7f2fac51502bcbcd646",
+        "expected_sha256": "20d11bf9d3296412b7ae24fef8972d30bc7b8b8977dff7f2fac51502bcbcd646",
+        "manifest_row_count": 403964,
+        "parquet_row_count": 403964
+      },
+      "pv_profile_qh": {
+        "actual_sha256": "77f52a1490a16f410454b0470ebaa2de85dd9ba2c73ca5161464de5dc32b5608",
+        "expected_sha256": "77f52a1490a16f410454b0470ebaa2de85dd9ba2c73ca5161464de5dc32b5608",
+        "manifest_row_count": 2962176,
+        "parquet_row_count": 2962176
+      }
+    }
+  },
+  "python_version": "3.13.14",
+  "request_schema_version": 1,
+  "required_artifacts": [
+    "run_request.json",
+    "resolved_config.json",
+    "dispatch.parquet",
+    "dispatch.csv",
+    "capacity.parquet",
+    "capacity.csv",
+    "summary.json",
+    "summary.csv",
+    "monthly_summary.parquet",
+    "monthly_summary.csv",
+    "yearly_summary.parquet",
+    "yearly_summary.csv",
+    "run_metadata.json",
+    "report.txt",
+    "run_status.json",
+    "run_events.jsonl",
+    "run.log",
+    "artifact_manifest.json"
+  ],
+  "resolved_end_exclusive_utc": "2025-12-31T23:00:00Z",
+  "resolved_start_utc": "2024-12-31T23:00:00Z",
+  "run_id": "demo-2025-all-markets-pv500-mfrr-f2e4d0c55ea7",
+  "software_version": "0.1.0",
+  "solver": {
+    "build_s": 0.5524274999988847,
+    "continuous_lp": true,
+    "diagnostics": {
+      "basis_validity": 1,
+      "crossover_iteration_count": 0,
+      "dual_solution_status": 2,
+      "ipm_iteration_count": 0,
+      "max_dual_infeasibility": 2.4868995751603507e-14,
+      "max_primal_infeasibility": 9.349102402027484e-08,
+      "num_dual_infeasibilities": 0,
+      "num_primal_infeasibilities": 0,
+      "objective_function_value": 115971.24070709643,
+      "pdlp_iteration_count": 0,
+      "primal_solution_status": 2,
+      "run_status": "HighsStatus.kOk",
+      "simplex_iteration_count": 40453
+    },
+    "end_to_end_s": 3.709058399999776,
+    "num_binary": 0,
+    "num_col": 281413,
+    "num_integer": 0,
+    "num_nz": 878083,
+    "num_row": 333924,
+    "options": {
+      "log_to_console": false,
+      "output_flag": false,
+      "presolve": "on",
+      "random_seed": 0,
+      "solver": "choose"
+    },
+    "package_version": "1.15.1",
+    "solve_s": 2.3777294000028633,
+    "solver_name": "HiGHS",
+    "solver_version": "1.15.1",
+    "status": "optimal",
+    "status_raw": "kOptimal"
+  },
+  "state": "completed",
+  "status_schema_version": 1
+}

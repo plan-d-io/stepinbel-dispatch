@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stepinbel"
+dynamic = ["version"]
+description = "Foundation package for a Belgian pumped-hydro market simulator."
+readme = "README.md"
+license = {file = "LICENSE.md"}
+requires-python = ">=3.13"
+authors = [
+    { name = "Joannes Laveyne" },
+]
+dependencies = [
+    "pyarrow>=14",
+    "highspy>=1.8,<2",
+    "tzdata>=2024.1",
+    "numpy>=2.1",
+]
+
+[project.urls]
+Repository = "https://github.com/plan-d-io/stepinbel-dispatch"
+Developer = "https://www.plan-d.io/"
+Client = "https://energent.be/"
+
+[project.scripts]
+stepinbel = "stepinbel.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+ui = [
+    "streamlit>=1.61",
+    "altair>=5.5",
+    "plotly>=5.24",
+    "pillow>=11",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {file = "src/stepinbel/VERSION"}
+
+[tool.setuptools.package-data]
+stepinbel = ["VERSION"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,94 @@
+StepInBel dedicated-market run
+==============================
+
+Run identity
+------------
+Run ID: demo-2025-all-markets-pv500-mfrr-f2e4d0c55ea7
+Status: completed
+Software: StepInBel 0.1.0
+Created (UTC): 2026-09-05T00:00:00Z
+
+Market and strategy
+-------------------
+Dedicated market: mfrr
+Strategy: mfrr / balanced / HistoricalQuantileCapacityBid (coverage 4 h)
+
+Period
+------
+Requested period: Belgian delivery 2025-01-01 to 2025-12-31 inclusive
+Resolved UTC window: [2024-12-31T23:00:00Z, 2025-12-31T23:00:00Z)
+Interval count: 35040
+Duration: 8,760.00 h
+
+Asset and site
+--------------
+Pump rating: 1.000 MW
+Turbine rating: 1.000 MW
+Pump efficiency: 0.8400
+Turbine efficiency: 0.9000
+Round-trip efficiency: 0.7560
+Reservoir source: discharge_at_rated
+Reservoir E_max: 4.444 MWh
+Usable energy: 4.000 MWh
+Effective grid import: 1.000 MW
+Effective grid export: 1.000 MW
+Co-located PV: 500.0 kW AC (Belgium, da)
+
+Revenue
+-------
+Total site revenue: 115,971.24 EUR
+Market energy net: 59,827.72 EUR
+Capacity revenue: 35,538.93 EUR
+PV export revenue: 20,604.59 EUR
+Total site revenue equals market energy net plus capacity revenue plus PV export revenue.
+
+Operations
+----------
+Pumped energy: 836.311 MWh
+Turbined energy: 247.786 MWh
+Full cycles: 55.752
+Initial reservoir: 2.222 MWh
+Final reservoir: 2.222 MWh
+
+Capacity results
+----------------
+Capacity rows: 1092
+Capacity revenue: 35,538.93 EUR
+
+Photovoltaics
+-------------
+Available: 454.884 MWh
+Self-consumed: 7.299 MWh
+Exported: 341.483 MWh
+Curtailed: 106.101 MWh
+Self-consumed PV has no separate revenue line; it lowers grid charging cost.
+
+Simultaneous-operation diagnostic
+---------------------------------
+Simultaneous intervals: 613
+Overlap energy: 51.776 MWh
+Simultaneous-interval energy-net revenue: 41,901.09 EUR
+Simultaneous-interval revenue is diagnostic and is not incremental value attributable to simultaneous operation.
+
+Solver and feasibility
+----------------------
+Solver: HiGHS 1.15.1
+Status: optimal
+Feasibility ok: True
+Columns / rows / nonzeros: 281413 / 333924 / 878083
+
+Provenance
+----------
+Published data manifest SHA-256: e13a1ab320201babf11aad8d047cb58079efa9e644a1a1b77fff16527a0a94a6
+Accepted behavioural baseline: PHS phs-mvp-0.1.0 (82691dad676f85bfd345670fb8022de079ca5578)
+Applicable methodology reference: mFRR_260925.pdf SHA-256 AEEDCB9480E224ADA0879FF0761F847BAA65141086857594CD79A6CED14E6165.
+Elia Watts.Happening methodology reference, not an exact conformance claim.
+These are methodology references, not exact Watts.Happening-conformance claims.
+
+Statements
+----------
+This is a historical perfect-foresight simulation, not a forecast or operating instruction.
+This is a dedicated-market result and must not be added to other market runs.
+Total site revenue equals market energy net plus capacity revenue plus PV export revenue.
+Self-consumed PV has no separate revenue line; it lowers grid charging cost.
+Simultaneous-interval revenue is diagnostic and is not incremental value attributable to simultaneous operation.

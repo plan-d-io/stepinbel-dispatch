@@ -1,0 +1,358 @@
+{
+  "pipeline_version": "1.0.0",
+  "built_at_utc": "2026-08-14T17:18:21Z",
+  "git_commit": "8208d06",
+  "pipeline_root": "C:\\Users\\Epyon\\OneDrive - UGent\\Cursor\\PHS\\data_pipeline",
+  "partial_build": false,
+  "tables": {
+    "da_prices_qh": {
+      "rows": 403964,
+      "coverage_utc": [
+        "2015-01-04T23:00:00Z",
+        "2026-07-13T21:45:00Z"
+      ],
+      "sources": [
+        {
+          "dataset": "entsoe_gui_energy_prices",
+          "files": [
+            "GUI_ENERGY_PRICES_201501010000-201601010000.csv",
+            "GUI_ENERGY_PRICES_201601010000-201701010000.csv",
+            "GUI_ENERGY_PRICES_201701010000-201801010000.csv",
+            "GUI_ENERGY_PRICES_201801010000-201901010000.csv",
+            "GUI_ENERGY_PRICES_201901010000-202001010000.csv",
+            "GUI_ENERGY_PRICES_202001010000-202101010000.csv",
+            "GUI_ENERGY_PRICES_202101010000-202201010000.csv",
+            "GUI_ENERGY_PRICES_202201010000-202301010000.csv",
+            "GUI_ENERGY_PRICES_202301010000-202401010000.csv",
+            "GUI_ENERGY_PRICES_202401010000-202501010000.csv",
+            "GUI_ENERGY_PRICES_202501010000-202601010000.csv",
+            "GUI_ENERGY_PRICES_202601010000-202701010000.csv"
+          ],
+          "downloaded_utc": "2026-07-12"
+        }
+      ],
+      "notes": [
+        "hourly before 2025-10-01 (SDAC 15-min MTU go-live, Belgian delivery day)",
+        "MTU (UTC) parsed as UTC via explicit format + tz_localize, never utc=True",
+        "intraday columns present in the CSVs but empty on this vintage; dropped (planned model extension)"
+      ],
+      "n_upsampled_from_hourly": 376508,
+      "n_sequence_collisions": 0,
+      "intraday_columns_populated": 0,
+      "sha256": "20d11bf9d3296412b7ae24fef8972d30bc7b8b8977dff7f2fac51502bcbcd646"
+    },
+    "balancing_qh": {
+      "rows": 78144,
+      "coverage_utc": [
+        "2024-05-21T22:00:00Z",
+        "2026-08-13T21:45:00Z"
+      ],
+      "sources": [
+        {
+          "dataset": "ods127",
+          "files": [
+            "ods127.parquet"
+          ],
+          "downloaded_utc": "2026-08-14",
+          "rows_in": 78144
+        },
+        {
+          "dataset": "ods166",
+          "files": [
+            "ods166.parquet"
+          ],
+          "downloaded_utc": "2026-08-14",
+          "rows_in": 78144
+        }
+      ],
+      "notes": [
+        "activation flags from ods127 volumes only",
+        "upwardavailablemfrrprice / downwardavailablemfrrprice dropped (defect D4)",
+        "datetime converted Europe/Brussels -> UTC after asserting tz-aware dtype",
+        "coverage starts at Belgian MARI go-live (delivery day 2024-05-22 = 2024-05-21 22:00:00+00:00; first eight QH kept)"
+      ],
+      "join": {
+        "ods127_only": 0,
+        "ods166_only": 0,
+        "inner": 78144
+      },
+      "n_activated": {
+        "afrr_up": 68479,
+        "afrr_down": 71757,
+        "mfrr_up": 8549,
+        "mfrr_down": 4054
+      },
+      "sha256": "4826c208305523a9e6ae033a40f26032519850548c533f3363967b88b60e9094"
+    },
+    "capacity_blocks": {
+      "rows": 62196,
+      "coverage_by_product": {
+        "mfrr": [
+          "2021-01-01",
+          "2026-08-15"
+        ],
+        "afrr": [
+          "2022-05-04",
+          "2026-08-15"
+        ]
+      },
+      "missing_delivery_days": {
+        "ods055": 28,
+        "ods125": 0
+      },
+      "missing_days_are_contiguous": {
+        "ods055": false,
+        "ods125": null
+      },
+      "missing_day_lists": {
+        "ods055": [
+          "2021-01-04",
+          "2021-03-03",
+          "2021-06-24",
+          "2021-07-06",
+          "2021-09-11",
+          "2022-11-09",
+          "2023-01-10",
+          "2023-01-31",
+          "2023-03-07",
+          "2023-03-27",
+          "2023-04-04",
+          "2023-04-13",
+          "2023-04-15",
+          "2023-04-20",
+          "2023-05-17",
+          "2023-05-27",
+          "2023-06-30",
+          "2023-07-04",
+          "2023-07-07",
+          "2023-07-12",
+          "2023-07-19",
+          "2023-11-23",
+          "2023-12-03",
+          "2023-12-20",
+          "2023-12-25",
+          "2023-12-29",
+          "2023-12-31",
+          "2025-10-03"
+        ],
+        "ods125": []
+      },
+      "decisions": [
+        "awarded volume taken from afrr_awarded_volume_* / afrrawardedvolumemw, not step_5",
+        "block_hours computed from UTC span, never assumed 4",
+        "0-24 expanded and tagged auction_step=step1 before aggregation"
+      ],
+      "award_reconciliation": {
+        "ods125": {
+          "mismatch_n": 132360,
+          "mismatch_rate": 0.022048975512243878,
+          "n_compared": 6003000,
+          "optimizer_true": 670535,
+          "optimizer_true_zero_awarded": 1,
+          "authoritative": "afrr_awarded_volume"
+        },
+        "ods207": {
+          "mismatch_n": 0,
+          "mismatch_rate": 0.0,
+          "n_compared": 231657,
+          "optimizer_true": 54488,
+          "optimizer_true_zero_awarded": 0,
+          "authoritative": "afrr_awarded_volume"
+        }
+      },
+      "sources": [
+        {
+          "dataset": "ods055",
+          "files": [
+            "ods055.parquet"
+          ],
+          "downloaded_utc": "2026-08-14"
+        },
+        {
+          "dataset": "ods206",
+          "files": [
+            "ods206.parquet"
+          ],
+          "downloaded_utc": "2026-08-14"
+        },
+        {
+          "dataset": "ods125",
+          "files": [
+            "ods125.parquet"
+          ],
+          "downloaded_utc": "2026-08-14"
+        },
+        {
+          "dataset": "ods207",
+          "files": [
+            "ods207.parquet"
+          ],
+          "downloaded_utc": "2026-08-14"
+        }
+      ],
+      "notes": [
+        "ods055 28 missing delivery days are scattered",
+        "ods125 missing delivery days: [] (n=0)"
+      ],
+      "sha256": "f55ce1b54c1c92df7cff2033058bfd20246f260794dae65b04e9282e31ab114b"
+    },
+    "capacity_bids": {
+      "rows": 3699211,
+      "sources": [
+        {
+          "dataset": "ods055",
+          "files": [
+            "ods055.parquet"
+          ],
+          "downloaded_utc": "2026-08-14"
+        },
+        {
+          "dataset": "ods206",
+          "files": [
+            "ods206.parquet"
+          ],
+          "downloaded_utc": "2026-08-14"
+        },
+        {
+          "dataset": "ods125",
+          "files": [
+            "ods125.parquet"
+          ],
+          "downloaded_utc": "2026-08-14"
+        },
+        {
+          "dataset": "ods207",
+          "files": [
+            "ods207.parquet"
+          ],
+          "downloaded_utc": "2026-08-14"
+        }
+      ],
+      "notes": [
+        "awarded bids only; bidid dropped"
+      ],
+      "sha256": "02046aebd1a69cf4809c4aa9f3a61c8a8367b016ca750dcb9df9677d72ea5f80"
+    },
+    "pv_profile_qh": {
+      "rows": 2962176,
+      "coverage_utc": [
+        "2020-07-31T22:00:00Z",
+        "2026-08-13T21:45:00Z"
+      ],
+      "n_regions": 14,
+      "regions": [
+        "Antwerp",
+        "Belgium",
+        "Brussels",
+        "East-Flanders",
+        "Flanders",
+        "Flemish-Brabant",
+        "Hainaut",
+        "Limburg",
+        "Liège",
+        "Luxembourg",
+        "Namur",
+        "Wallonia",
+        "Walloon-Brabant",
+        "West-Flanders"
+      ],
+      "sources": [
+        {
+          "dataset": "ods032",
+          "files": [
+            "ods032.parquet"
+          ],
+          "downloaded_utc": "2026-08-14",
+          "rows_in": 2962176
+        }
+      ],
+      "notes": [
+        "forecast and confidence columns dropped on read",
+        "Elia loadfactor column not carried; load_factor = measured_mw / monitored_capacity_mw",
+        "all regions kept; do not sum (provinces and aggregates both present)",
+        "trimmed to Belgian delivery day 2020-01-01 (2019-12-31 23:00:00+00:00)",
+        "spatially smoothed provincial profile understates peaks and ramps; curtailment from it is a lower bound"
+      ],
+      "sha256": "77f52a1490a16f410454b0470ebaa2de85dd9ba2c73ca5161464de5dc32b5608"
+    }
+  },
+  "validation": {
+    "passed": true,
+    "fatal": [],
+    "warnings": [
+      "BAL-CBMP: 12 mFRR down activations have volume but no SA/DA price; cbmp left as NaN (price genuinely absent, not filled from MIP/MDP)",
+      "CAP-FLEX: ods055: 18511 rows have mFRR Flex awarded volume > 0 (0 on/after delivery day 2024-05-22); Flex is ignored",
+      "CAP-AWARD: ods125: awarded vs step_5 mismatch 132360/6003000 (2.2049%); awarded column taken as authoritative. selected_by_optimizer TRUE with zero awarded: 1/670535",
+      "PV-P1: 70 rows have derived load_factor > 1.2 (0.0024%, max=1.5089); kept, not clipped",
+      "D-2: ods055: 28 missing delivery days in 2021-01-01..2026-05-19 (span 1965, present 1937); first/last 2021-01-04/2025-10-03",
+      "P-1: 70 load_factor values above 1.2 (0.0024%); kept, not clipped",
+      "X-2: ods055: days in common 364/1937 (18.8% of parquet); rows compared 692106/692106 of that overlap (100.0% of overlap); 0 value disagreements beyond 1e-06",
+      "X-2: ods125: days in common 365/1477 (24.7% of parquet); rows compared 817565/817565 of that overlap (100.0% of overlap); 0 value disagreements beyond 1e-06",
+      "X-2: ods127: quarter-hours in common 67008/78144 (85.7% of parquet); rows compared 65088/67008 of that overlap (97.1% of overlap, 83.3% of parquet); 0 value disagreements beyond 1e-06; 1920 CSV rows not Validated were excluded from the value check (parquet later revised them)",
+      "X-2: ods166: quarter-hours in common 35040/78144 (44.8% of parquet); rows compared 35040/35040 of that overlap (100.0% of overlap, 44.8% of parquet); 0 value disagreements beyond 1e-06"
+    ],
+    "crossformat": [
+      {
+        "dataset": "ods055",
+        "unit": "days",
+        "csv_n": 364,
+        "parquet_n": 1937,
+        "overlap_n": 364,
+        "overlap_fraction": 0.18791946308724833,
+        "n_rows_overlap": 692106,
+        "n_rows_compared": 692106,
+        "compared_share_of_overlap": 1.0,
+        "compared_share_of_parquet": null,
+        "n_compared": 1384212,
+        "n_mismatch": 0,
+        "max_abs_diff": 0.0
+      },
+      {
+        "dataset": "ods125",
+        "unit": "days",
+        "csv_n": 365,
+        "parquet_n": 1477,
+        "overlap_n": 365,
+        "overlap_fraction": 0.24712254570074474,
+        "n_rows_overlap": 817565,
+        "n_rows_compared": 817565,
+        "compared_share_of_overlap": 1.0,
+        "compared_share_of_parquet": null,
+        "n_compared": 3270260,
+        "n_mismatch": 0,
+        "max_abs_diff": 0.0
+      },
+      {
+        "dataset": "ods127",
+        "unit": "quarter-hours",
+        "csv_n": 67008,
+        "parquet_n": 78144,
+        "overlap_n": 67008,
+        "overlap_fraction": 0.8574938574938575,
+        "n_rows_overlap": 67008,
+        "n_rows_compared": 65088,
+        "compared_share_of_overlap": 0.9713467048710601,
+        "compared_share_of_parquet": 0.8329238329238329,
+        "n_compared": 650880,
+        "n_mismatch": 0,
+        "max_abs_diff": 0.0,
+        "note": "1920 CSV rows not Validated were excluded from the value check (parquet later revised them)"
+      },
+      {
+        "dataset": "ods166",
+        "unit": "quarter-hours",
+        "csv_n": 35040,
+        "parquet_n": 78144,
+        "overlap_n": 35040,
+        "overlap_fraction": 0.4484029484029484,
+        "n_rows_overlap": 35040,
+        "n_rows_compared": 35040,
+        "compared_share_of_overlap": 1.0,
+        "compared_share_of_parquet": 0.4484029484029484,
+        "n_compared": 350400,
+        "n_mismatch": 0,
+        "max_abs_diff": 0.0
+      }
+    ]
+  }
+}

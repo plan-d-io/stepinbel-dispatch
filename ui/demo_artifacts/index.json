@@ -1,0 +1,25 @@
+{
+  "demo_index_schema_version": 1,
+  "demo_id": "stepinbel-2025-all-markets-pv500",
+  "display_name": "2025 all-market demonstration",
+  "relative_directory": "stepinbel_2025_all_markets_pv500",
+  "source_stepinbel_commit": "48cbd889f41d6f34fbbfab4c18c735d4c015c1a8",
+  "source_data_manifest_sha256": "e13a1ab320201babf11aad8d047cb58079efa9e644a1a1b77fff16527a0a94a6",
+  "comparison_artifact_schema_version": 1,
+  "artifact_manifest_byte_size": 1916,
+  "artifact_manifest_sha256": "1ed0a0cd2592b98116fe02ccbbec19fdf814036305ada74e6ac79aae5fc48a56",
+  "markets": [
+    "da",
+    "mfrr",
+    "afrr"
+  ],
+  "period": "Belgian delivery period 2025-01-01 through 2025-12-31 inclusive (calendar year 2025)",
+  "configuration": "1 MW / 4 h pumped-hydro storage with accepted efficiencies (eta_pump=0.84, eta_turbine=0.90), 1 MW grid import and export, 500 kW Belgium PV valued at day-ahead prices, balanced activation, and historical P50 capacity bids",
+  "highest_revenue_market": "afrr",
+  "total_site_revenue_eur_by_market": {
+    "da": 136405.7172436732,
+    "mfrr": 115971.24070709283,
+    "afrr": 254183.10064814897
+  },
+  "interpretation": "These cases are dedicated-market alternatives. Their revenues are not additive and do not represent simultaneous multi-market participation. The results are historical perfect-foresight simulations rather than forecasts."
+}

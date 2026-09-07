@@ -1,0 +1,61 @@
+{
+  "artifact_schema_version": 1,
+  "charge_duration_h": 5.291005291005291,
+  "config": {
+    "asset": {
+      "enforce_terminal_soc": true,
+      "eta_pump": 0.84,
+      "eta_turbine": 0.9,
+      "pond_energy_mwh": null,
+      "power_pump_mw": 1.0,
+      "power_turbine_mw": 1.0,
+      "pump_ramp_down_min": 1.0,
+      "pump_ramp_power_frac": 0.1,
+      "pump_ramp_up_min": 10.0,
+      "soc_initial_frac": 0.5,
+      "soc_terminal_frac": 0.5,
+      "storage_hours": 4.0,
+      "storage_hours_basis": "discharge_at_rated",
+      "turbine_ramp_down_min": 2.0,
+      "turbine_ramp_power_frac": 0.0,
+      "turbine_ramp_up_min": 2.0
+    },
+    "market_case": {
+      "activation_profile": "balanced",
+      "capacity_bid": {
+        "kind": "historical_quantile",
+        "quantile": 0.5
+      },
+      "capacity_coverage_hours": 4.0,
+      "kind": "AFRRCase",
+      "market": "afrr",
+      "up_capacity_fraction": 1.0
+    },
+    "period": {
+      "end_date_inclusive": "2025-12-31",
+      "kind": "belgian_delivery",
+      "start_date": "2025-01-01"
+    },
+    "site": {
+      "grid_export_mw": 1.0,
+      "grid_import_mw": 1.0,
+      "pv_ac_kw": 500.0,
+      "pv_fixed_price_eur_mwh": null,
+      "pv_region": "Belgium",
+      "pv_revenue_mode": "da"
+    }
+  },
+  "discharge_duration_h": 4.0,
+  "e_max_mwh": 4.444444444444445,
+  "e_max_source": "discharge_at_rated",
+  "effective_grid_export_mw": 1.0,
+  "effective_grid_import_mw": 1.0,
+  "grid_energy_to_fill_mwh": 5.291005291005291,
+  "interval_count": 35040,
+  "period_kind": "belgian_delivery",
+  "resolved_end_exclusive_utc": "2025-12-31T23:00:00Z",
+  "resolved_start_utc": "2024-12-31T23:00:00Z",
+  "round_trip_efficiency": 0.756,
+  "run_id": "demo-2025-all-markets-pv500-afrr-05c93fc8b8fb",
+  "usable_energy_mwh": 4.0
+}

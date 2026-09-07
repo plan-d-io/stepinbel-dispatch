@@ -1,0 +1,51 @@
+{
+  "behavioural_baseline": {
+    "commit": "82691dad676f85bfd345670fb8022de079ca5578",
+    "project": "PHS",
+    "tag": "phs-mvp-0.1.0"
+  },
+  "canonical_execution_order": [
+    "da",
+    "mfrr",
+    "afrr"
+  ],
+  "children": {
+    "afrr": {
+      "artifact_manifest_byte_size": 2812,
+      "artifact_manifest_sha256": "8eaf90747febcdeb7bc33aa2cb3fc0f122dcc9594be5c094291be4c12da138c9",
+      "artifact_schema_version": 1,
+      "market": "afrr",
+      "relative_directory": "cases/afrr",
+      "run_id": "demo-2025-all-markets-pv500-afrr-05c93fc8b8fb"
+    },
+    "da": {
+      "artifact_manifest_byte_size": 2807,
+      "artifact_manifest_sha256": "07013aa5166434bbf6bdc4e8002ac7a56940ff90c02f2a3240e141ad83bc4b9f",
+      "artifact_schema_version": 1,
+      "market": "da",
+      "relative_directory": "cases/da",
+      "run_id": "demo-2025-all-markets-pv500-da-95a81c5b52a3"
+    },
+    "mfrr": {
+      "artifact_manifest_byte_size": 2813,
+      "artifact_manifest_sha256": "00ce3897ea5777255dff4eabd5e7ffd46737e4e3c40186362d408153d0e4a39c",
+      "artifact_schema_version": 1,
+      "market": "mfrr",
+      "relative_directory": "cases/mfrr",
+      "run_id": "demo-2025-all-markets-pv500-mfrr-f2e4d0c55ea7"
+    }
+  },
+  "comparison_artifact_schema_version": 1,
+  "comparison_request_schema_version": 1,
+  "dedicated_alternatives_statement": "Each row is an alternative dedicated-market simulation. Revenues are not additive and do not represent simultaneous market participation.",
+  "event_schema_version": 1,
+  "interval_count": 35040,
+  "published_data_manifest_sha256": "e13a1ab320201babf11aad8d047cb58079efa9e644a1a1b77fff16527a0a94a6",
+  "python_version": "3.13.14",
+  "resolved_end_exclusive_utc": "2025-12-31T23:00:00Z",
+  "resolved_start_utc": "2024-12-31T23:00:00Z",
+  "run_id": "demo-2025-all-markets-pv500",
+  "software_version": "0.1.0",
+  "state": "completed",
+  "status_schema_version": 1
+}

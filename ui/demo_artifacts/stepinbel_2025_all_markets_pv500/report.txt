@@ -1,0 +1,93 @@
+StepInBel dedicated-market alternatives
+=======================================
+
+Run identity
+------------
+Comparison run ID: demo-2025-all-markets-pv500
+Status: completed
+Software: StepInBel 0.1.0
+Created (UTC): 2026-09-05T00:00:00Z
+Requested period: Belgian delivery 2025-01-01 to 2025-12-31 inclusive
+Resolved UTC window: [2024-12-31T23:00:00Z, 2025-12-31T23:00:00Z)
+
+Shared PHS and grid configuration
+---------------------------------
+Pump rating: 1.000 MW
+Turbine rating: 1.000 MW
+Pump efficiency: 0.8400
+Turbine efficiency: 0.9000
+Round-trip efficiency: 0.7560
+Reservoir source: discharge_at_rated
+Reservoir E_max: 4.444 MWh
+Effective grid import: 1.000 MW
+Effective grid export: 1.000 MW
+Co-located PV: 500.0 kW AC (Belgium, da settlement)
+
+Dedicated-market cases
+----------------------
+Day-ahead: da energy-only
+mFRR: mfrr / balanced / HistoricalQuantileCapacityBid (coverage 4 h)
+aFRR: afrr / balanced / HistoricalQuantileCapacityBid (coverage 4 h, up-capacity fraction 1.0000)
+
+Ranked alternatives
+-------------------
+Rank 1: afrr (run demo-2025-all-markets-pv500-afrr-05c93fc8b8fb)
+  Total site revenue: 254,183.10 EUR
+  Market energy net: 169,601.23 EUR
+  Capacity revenue: 64,993.03 EUR
+  PV export revenue: 19,588.84 EUR
+  Difference from highest: 0.00 EUR
+  Pumped energy: 2,276.761 MWh
+  Turbined energy: 1,186.957 MWh
+  Full cycles: 267.065
+  Simultaneous-operation diagnostic: 1743 intervals, 216.663 MWh overlap, 68,492.67 EUR energy-net
+Rank 2: da (run demo-2025-all-markets-pv500-da-95a81c5b52a3)
+  Total site revenue: 136,405.72 EUR
+  Market energy net: 122,691.08 EUR
+  Capacity revenue: 0.00 EUR
+  PV export revenue: 13,714.63 EUR
+  Difference from highest: -117,777.38 EUR
+  Pumped energy: 2,385.898 MWh
+  Turbined energy: 1,729.116 MWh
+  Full cycles: 389.051
+  Simultaneous-operation diagnostic: 6 intervals, 0.040 MWh overlap, 29.68 EUR energy-net
+Rank 3: mfrr (run demo-2025-all-markets-pv500-mfrr-f2e4d0c55ea7)
+  Total site revenue: 115,971.24 EUR
+  Market energy net: 59,827.72 EUR
+  Capacity revenue: 35,538.93 EUR
+  PV export revenue: 20,604.59 EUR
+  Difference from highest: -138,211.86 EUR
+  Pumped energy: 836.311 MWh
+  Turbined energy: 247.786 MWh
+  Full cycles: 55.752
+  Simultaneous-operation diagnostic: 613 intervals, 51.776 MWh overlap, 41,901.09 EUR energy-net
+
+Photovoltaics
+-------------
+PV can serve pumping, be exported within the shared grid limit, or be curtailed.
+Self-consumed PV has no separate revenue line; it lowers grid charging cost.
+
+Accounting
+----------
+Total site revenue includes market energy net, capacity revenue, and PV export revenue.
+PV used for pumping reduces grid charging.
+
+Highest modelled total-revenue market
+-------------------------------------
+Highest modelled total-revenue market: afrr
+This ranking is a mathematical comparison of dedicated-market alternatives.
+It is not an investment recommendation and does not claim that market risks are equivalent.
+
+Provenance
+----------
+Published data manifest SHA-256: e13a1ab320201babf11aad8d047cb58079efa9e644a1a1b77fff16527a0a94a6
+Accepted behavioural baseline: PHS phs-mvp-0.1.0 (82691dad676f85bfd345670fb8022de079ca5578)
+Child methodology references remain in each dedicated-market audit directory.
+Day-ahead has no applicable Elia conformance reference.
+These are methodology references, not exact Watts.Happening-conformance claims.
+
+Statements
+----------
+Each row is an alternative dedicated-market simulation. Revenues are not additive and do not represent simultaneous market participation.
+This comparison does not co-optimize or combine market participation.
+This is a historical perfect-foresight simulation, not a forecast or operating instruction.

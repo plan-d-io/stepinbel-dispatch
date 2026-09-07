@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0.0",
+  "source": {
+    "project": "PHS",
+    "tag": "phs-mvp-0.1.0",
+    "commit": "82691dad676f85bfd345670fb8022de079ca5578"
+  },
+  "published_data": {
+    "manifest_sha256": "e13a1ab320201babf11aad8d047cb58079efa9e644a1a1b77fff16527a0a94a6",
+    "data_vintage": "2026-08-14T17:18:21Z",
+    "pipeline_version": "1.0.0",
+    "pipeline_git_commit": "8208d06"
+  },
+  "statement": "These values are PHS-baseline parity evidence, not forecasts or exact Elia Watts.Happening conformance.",
+  "cases": [
+    {
+      "case_id": "da_balanced_2025_utc_no_pv",
+      "filename": "da_balanced_2025_utc_no_pv.meta.json",
+      "source_relative_path": "outputs/headline_2025/da_balanced/da_yearly_balanced_1MW_4h.meta.json",
+      "source_metadata_sha256": "eaedb6683260c9f8e3043b4e4b6e6c21091de15270b78fe2bd7ec43e712bfe95",
+      "market": "da",
+      "dispatch_mode": "balanced",
+      "window": {
+        "start_utc": "2025-01-01T00:00:00Z",
+        "end_exclusive_utc": "2026-01-01T00:00:00Z"
+      },
+      "interval_count": 35040,
+      "pv_capacity_kw": 0.0,
+      "metrics": {
+        "total_eur": 115496.80517869153,
+        "energy_net_eur": 115496.80517869153,
+        "capacity_eur": 0.0,
+        "pv_eur": 0.0
+      }
+    },
+    {
+      "case_id": "mfrr_balanced_2025_delivery_no_pv",
+      "filename": "mfrr_balanced_2025_delivery_no_pv.meta.json",
+      "source_relative_path": "outputs/headline_2025/mfrr_balanced/mfrr_yearly_balanced_1MW_4h.meta.json",
+      "source_metadata_sha256": "cbafd7d0134a165cc59d9fa99498373fbbc1ea247b33f399c48400518fecf48c",
+      "market": "mfrr",
+      "dispatch_mode": "balanced",
+      "window": {
+        "start_utc": "2024-12-31T23:00:00Z",
+        "end_exclusive_utc": "2025-12-31T23:00:00Z"
+      },
+      "interval_count": 35040,
+      "pv_capacity_kw": 0.0,
+      "metrics": {
+        "total_eur": 94874.97865237418,
+        "energy_net_eur": 59359.317526235245,
+        "capacity_eur": 35515.66112613893,
+        "pv_eur": 0.0
+      }
+    },
+    {
+      "case_id": "afrr_balanced_2025_delivery_no_pv",
+      "filename": "afrr_balanced_2025_delivery_no_pv.meta.json",
+      "source_relative_path": "outputs/headline_2025/afrr_balanced/afrr_yearly_balanced_1MW_4h.meta.json",
+      "source_metadata_sha256": "55b03cc53b63f5a0308c8782a075df79246c3c7408e3bed2fdfd236906b6be74",
+      "market": "afrr",
+      "dispatch_mode": "balanced",
+      "window": {
+        "start_utc": "2024-12-31T23:00:00Z",
+        "end_exclusive_utc": "2025-12-31T23:00:00Z"
+      },
+      "interval_count": 35040,
+      "pv_capacity_kw": 0.0,
+      "metrics": {
+        "total_eur": 233306.71125765995,
+        "energy_net_eur": 168238.7530225783,
+        "capacity_eur": 65067.95823508165,
+        "pv_eur": 0.0
+      }
+    },
+    {
+      "case_id": "da_balanced_2025_delivery_pv500",
+      "filename": "da_balanced_2025_delivery_pv500.meta.json",
+      "source_relative_path": "outputs/ui/20260902-115027/da/da_yearly_balanced_1MW_4h.meta.json",
+      "source_metadata_sha256": "3dcb7982aa9a0719078fb6ebfca9d165a817733d4cb3c73ebebab568af1ec69f",
+      "market": "da",
+      "dispatch_mode": "balanced",
+      "window": {
+        "start_utc": "2024-12-31T23:00:00Z",
+        "end_exclusive_utc": "2025-12-31T23:00:00Z"
+      },
+      "interval_count": 35040,
+      "pv_capacity_kw": 500.0,
+      "metrics": {
+        "total_eur": 136405.7175238604,
+        "energy_net_eur": 122484.08696261534,
+        "capacity_eur": 0.0,
+        "pv_eur": 13921.630561245065
+      }
+    }
+  ]
+}

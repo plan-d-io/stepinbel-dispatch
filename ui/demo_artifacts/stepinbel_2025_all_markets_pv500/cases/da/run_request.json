@@ -1,0 +1,55 @@
+{
+  "artifact_schema_version": 1,
+  "behavioural_baseline": {
+    "commit": "82691dad676f85bfd345670fb8022de079ca5578",
+    "project": "PHS",
+    "tag": "phs-mvp-0.1.0"
+  },
+  "config": {
+    "asset": {
+      "enforce_terminal_soc": true,
+      "eta_pump": 0.84,
+      "eta_turbine": 0.9,
+      "pond_energy_mwh": null,
+      "power_pump_mw": 1.0,
+      "power_turbine_mw": 1.0,
+      "pump_ramp_down_min": 1.0,
+      "pump_ramp_power_frac": 0.1,
+      "pump_ramp_up_min": 10.0,
+      "soc_initial_frac": 0.5,
+      "soc_terminal_frac": 0.5,
+      "storage_hours": 4.0,
+      "storage_hours_basis": "discharge_at_rated",
+      "turbine_ramp_down_min": 2.0,
+      "turbine_ramp_power_frac": 0.0,
+      "turbine_ramp_up_min": 2.0
+    },
+    "market_case": {
+      "kind": "DayAheadCase",
+      "market": "da"
+    },
+    "period": {
+      "end_date_inclusive": "2025-12-31",
+      "kind": "belgian_delivery",
+      "start_date": "2025-01-01"
+    },
+    "site": {
+      "grid_export_mw": 1.0,
+      "grid_import_mw": 1.0,
+      "pv_ac_kw": 500.0,
+      "pv_fixed_price_eur_mwh": null,
+      "pv_region": "Belgium",
+      "pv_revenue_mode": "da"
+    }
+  },
+  "created_at_utc": "2026-09-05T00:00:00Z",
+  "data_directory": "C:\\Users\\Epyon\\OneDrive - UGent\\Cursor\\StepInBel\\data",
+  "data_manifest_sha256": "e13a1ab320201babf11aad8d047cb58079efa9e644a1a1b77fff16527a0a94a6",
+  "output_directory": "C:\\Users\\Epyon\\OneDrive - UGent\\Cursor\\StepInBel\\ui\\demo_artifacts\\stepinbel_2025_all_markets_pv500\\cases\\da",
+  "request_schema_version": 1,
+  "run_id": "demo-2025-all-markets-pv500-da-95a81c5b52a3",
+  "software_version": "0.1.0",
+  "solver_options": {
+    "detailed_output": false
+  }
+}
