@@ -4,7 +4,7 @@
   <a href="https://energent.be/"><img src="ui/assets/STEPinBEL-logo2.png" alt="Energent" width="180"></a>
 </p>
 
-StepInBel estimates how a pumped-hydro storage (PHS) asset could have performed
+The StepInBel dispatch simulator estimates how a pumped-hydro storage (PHS) asset could have performed
 on Belgian electricity markets. For a selected period and asset configuration,
 it simulates three independent dedicated-market cases:
 
