@@ -29,8 +29,8 @@ source.
 
 Then:
 
-1. Clone [stepinbel-dispatch](https://github.com/plan-d-io/stepinbel-dispatch),
-   or download and extract its ZIP (`Code` > `Download ZIP`).
+1. Clone the [stepinbel-dispatch](https://github.com/plan-d-io/stepinbel-dispatch) repository,
+   or download and extract its ZIP (upper right corner of this page > `Code` > `Download ZIP`).
 2. Place the folder somewhere you can write files.
 3. Double-click `setup.cmd`. It creates a private `.venv` in that folder and
    installs the required dependencies. This can take several minutes.
