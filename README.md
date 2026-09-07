@@ -1,7 +1,7 @@
 # StepInBel
 
 <p align="left">
-  <a href="https://energent.be/"><img src="ui/assets/Energent.png" alt="Energent" width="180"></a>
+  <a href="https://energent.be/"><img src="ui/assets/STEPinBEL-logo2.png" alt="Energent" width="180"></a>
 </p>
 
 StepInBel estimates how a pumped-hydro storage (PHS) asset could have performed
@@ -33,7 +33,7 @@ Then:
    or download and extract its ZIP (`Code` > `Download ZIP`).
 2. Place the folder somewhere you can write files.
 3. Double-click `setup.cmd`. It creates a private `.venv` in that folder and
-   installs the tested dependencies. This can take several minutes.
+   installs the required dependencies. This can take several minutes.
 4. Double-click `start.cmd`.
 5. Open the local address shown in the terminal if the browser does not open
    automatically.
