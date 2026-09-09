@@ -17,6 +17,11 @@ from stepinbel.workflows import (
     serialize_market_comparison_request,
 )
 
+from ui.services.commitment import (
+    machine_commitment_enabled,
+    mip_rel_gap_from_form,
+    mip_time_limit_s_from_form,
+)
 from ui.services.configs import build_simulation_configs
 from ui.services.errors import user_facing_error
 from ui.services.paths import DATA_DIRECTORY, KIND_CASE, KIND_COMPARISON
@@ -83,7 +88,15 @@ def build_public_request(
     markets = list(snapshot.get("markets") or [])
     if list(mapping) != markets:
         raise ValueError(ERROR_PARITY)
-    options = SolverOptions(detailed_output=bool(snapshot.get("detailed_solver_output")))
+    detailed = bool(snapshot.get("detailed_solver_output"))
+    if machine_commitment_enabled(form):
+        options = SolverOptions(
+            detailed_output=detailed,
+            mip_rel_gap=mip_rel_gap_from_form(form),
+            time_limit_s=mip_time_limit_s_from_form(form),
+        )
+    else:
+        options = SolverOptions(detailed_output=detailed)
     data_root = Path(data_directory) if data_directory is not None else DATA_DIRECTORY
     kind = request_kind(markets)
     try:

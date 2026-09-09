@@ -93,11 +93,33 @@ Existing output directories remain forbidden by the workflow.
 Advanced asymmetric or explicit-pond sweep candidates are not a second CLI
 schema. Build an `AssetSweepRequest` and execute it with `sweep --request`.
 
+## Machine commitment
+
+These flags are optional and off by default. Enabling any of the physical
+flags builds a MILP. There is no separate LP/MILP mode switch.
+
+```text
+--fixed-speed-pump
+--turbine-minimum-output-fraction 0.18
+--forbid-simultaneous-operation
+--mip-rel-gap 0.015
+--mip-time-limit-s 900
+```
+
+`--turbine-minimum-output-fraction 0` disables the turbine floor. The CLI
+success JSON reports `formulation` (`lp` or `milp`). A MILP also reports
+`termination`, `requested_mip_gap`, and `achieved_mip_gap`. A time-limited
+feasible incumbent is a successful exit (`0`) with a concise warning on
+stderr and a `warning` field in the JSON. It is not described as optimal or
+as accepted within the requested gap. Time limit without an incumbent,
+infeasibility, and solver failure remain failed runs. See
+[MACHINE_COMMITMENT.md](MACHINE_COMMITMENT.md).
+
 ## Output
 
 Progress goes to stderr: one line per `RunEvent`, including run ID, stage
 number and total, stage key, state, and message. `--quiet` suppresses those
-lines only.
+lines only. A usable time-limited MILP warning is still written to stderr.
 
 Successful completion writes exactly one compact JSON object and a newline to
 stdout. Keys are sorted. Numbers remain numbers. Non-finite values are rejected
@@ -153,6 +175,16 @@ stepinbel run --market afrr `
   --delivery-start 2025-01-15 --delivery-end 2025-01-15 `
   --pv-ac-kw 500 --pv-region Belgium --pv-revenue-mode da `
   --data-dir data --output-dir outputs/afrr-pv
+```
+
+Day-ahead with optional machine operating constraints:
+
+```powershell
+stepinbel run --market da `
+  --delivery-start 2025-01-15 --delivery-end 2025-01-15 `
+  --fixed-speed-pump --turbine-minimum-output-fraction 0.18 `
+  --forbid-simultaneous-operation --mip-rel-gap 0.015 --mip-time-limit-s 900 `
+  --data-dir data --output-dir outputs/da-commitment
 ```
 
 Dedicated-market comparison (all three markets):

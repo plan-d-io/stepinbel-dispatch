@@ -1,4 +1,4 @@
-"""Public solve_case entry point for the HiGHS continuous LP."""
+"""Public solve_case entry point for the HiGHS LP/MILP model."""
 
 from __future__ import annotations
 
@@ -16,8 +16,9 @@ from stepinbel.markets.afrr import build_afrr_inputs
 from stepinbel.markets.da import build_day_ahead_inputs
 from stepinbel.markets.mfrr import build_mfrr_inputs
 from stepinbel.optimizer.checks import check_solution, decode_solution
-from stepinbel.optimizer.highs import solve_sparse_lp
-from stepinbel.optimizer.model import SparseLp, build_sparse_lp, prepare_physical
+from stepinbel.optimizer.commitment import resolve_machine_commitment
+from stepinbel.optimizer.highs import solve_sparse_model
+from stepinbel.optimizer.model import SparseModel, build_sparse_model, prepare_physical
 from stepinbel.optimizer.types import (
     CAPACITY_RESULT_SCHEMA,
     DISPATCH_COLUMNS,
@@ -84,17 +85,18 @@ def solve_from_inputs(
     if period.window.interval_count != market_inputs.interval_count:
         raise ModelError("resolved period does not match market arrays")
     prepared = prepare_physical(config, market_inputs, pv_load_factor)
+    resolved = resolve_machine_commitment(config)
     build_started = time.perf_counter()
-    lp = build_sparse_lp(prepared)
+    model = build_sparse_model(prepared, resolved)
     build_s = time.perf_counter() - build_started
-    solved = solve_sparse_lp(lp, options, build_s=build_s)
-    decoded = decode_solution(lp, solved.col_value, solved.objective)
+    solved = solve_sparse_model(model, options, build_s=build_s)
+    decoded = decode_solution(model, solved.col_value, solved.objective)
     return _assemble(
         config=config,
         period=period,
         manifest_sha256=manifest_sha256,
         timestamps=timestamps,
-        lp=lp,
+        model=model,
         decoded=decoded,
         solved=solved,
         started=started,
@@ -146,12 +148,12 @@ def _assemble(
     period: ResolvedPeriod,
     manifest_sha256: str,
     timestamps: tuple[datetime, ...],
-    lp: SparseLp,
+    model: SparseModel,
     decoded,
     solved,
     started: float,
 ) -> DispatchResult:
-    prepared = lp.prepared
+    prepared = model.prepared
     n = prepared.n
     dt = prepared.dt_h
     energy_gross = dt * prepared.sell_price * decoded.p_turbine
@@ -196,11 +198,11 @@ def _assemble(
             decoded.p_pump, decoded.p_turbine, dt, "turbine"
         ),
         simultaneous_overlap_mwh=_simultaneous_overlap(decoded.p_pump, decoded.p_turbine, dt),
-        n_pump_ramp_up_vars=lp.n_pump_ramp_up_vars,
-        n_turbine_ramp_up_vars=lp.n_turbine_ramp_up_vars,
+        n_pump_ramp_up_vars=model.n_pump_ramp_up_vars,
+        n_turbine_ramp_up_vars=model.n_turbine_ramp_up_vars,
     )
     feasibility = check_solution(
-        lp,
+        model,
         decoded,
         solved.col_value,
         energy_gross_eur=energy_gross,
@@ -241,7 +243,7 @@ def _assemble(
         num_nz=solved.num_nz,
         num_integer=solved.num_integer,
         num_binary=solved.num_binary,
-        continuous_lp=True,
+        continuous_lp=solved.num_integer == 0 and solved.num_binary == 0,
         options=solved.options,
         diagnostics=solved.diagnostics,
     )

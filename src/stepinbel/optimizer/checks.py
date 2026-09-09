@@ -6,11 +6,12 @@ import math
 
 import numpy as np
 
-from stepinbel.optimizer.model import SparseLp
+from stepinbel.optimizer.model import SparseModel
 from stepinbel.optimizer.types import (
     ACCOUNTING_TOL_EUR,
     ENERGY_TOL_MWH,
     POWER_TOL_MW,
+    PV_ALLOCATION_TOL_MW,
     FeasibilityReport,
     SolverError,
 )
@@ -32,6 +33,8 @@ class DecodedSolution:
         pv_curtail: np.ndarray,
         pv_price: np.ndarray,
         capacity_mw: np.ndarray,
+        u_pump: np.ndarray,
+        u_turbine: np.ndarray,
         objective: float,
     ) -> None:
         self.p_pump = p_pump
@@ -46,12 +49,14 @@ class DecodedSolution:
         self.pv_curtail = pv_curtail
         self.pv_price = pv_price
         self.capacity_mw = capacity_mw
+        self.u_pump = u_pump
+        self.u_turbine = u_turbine
         self.objective = objective
 
 
-def decode_solution(lp: SparseLp, col_value: np.ndarray, objective: float) -> DecodedSolution:
-    layout = lp.layout
-    prepared = lp.prepared
+def decode_solution(model: SparseModel, col_value: np.ndarray, objective: float) -> DecodedSolution:
+    layout = model.layout
+    prepared = model.prepared
     n = prepared.n
     x = np.asarray(col_value, dtype=np.float64)
     p_pump = _copy(x[layout.idx_pump : layout.idx_pump + n])
@@ -91,6 +96,14 @@ def decode_solution(lp: SparseLp, col_value: np.ndarray, objective: float) -> De
         capacity = _copy(
             x[layout.idx_capacity : layout.idx_capacity + layout.n_commitments]
         )
+    if layout.idx_u_pump is None:
+        u_pump = np.zeros(n, dtype=np.float64)
+    else:
+        u_pump = _copy(x[layout.idx_u_pump : layout.idx_u_pump + n])
+    if layout.idx_u_turb is None:
+        u_turbine = np.zeros(n, dtype=np.float64)
+    else:
+        u_turbine = _copy(x[layout.idx_u_turb : layout.idx_u_turb + n])
     return DecodedSolution(
         p_pump=p_pump,
         p_pump_grid=p_grid,
@@ -104,12 +117,14 @@ def decode_solution(lp: SparseLp, col_value: np.ndarray, objective: float) -> De
         pv_curtail=pv_curtail,
         pv_price=pv_price,
         capacity_mw=capacity,
+        u_pump=u_pump,
+        u_turbine=u_turbine,
         objective=float(objective),
     )
 
 
 def check_solution(
-    lp: SparseLp,
+    model: SparseModel,
     decoded: DecodedSolution,
     col_value: np.ndarray,
     *,
@@ -125,12 +140,12 @@ def check_solution(
     summary_pv: float,
     summary_total: float,
 ) -> FeasibilityReport:
-    prepared = lp.prepared
+    prepared = model.prepared
     n = prepared.n
     dt = prepared.dt_h
     raw = np.asarray(col_value, dtype=np.float64)
-    if raw.shape != (lp.num_col,):
-        _fail(f"solution has {raw.size} values, expected {lp.num_col}")
+    if raw.shape != (model.num_col,):
+        _fail(f"solution has {raw.size} values, expected {model.num_col}")
     if not np.all(np.isfinite(raw)):
         _fail("solution vector contains non-finite values")
     arrays = [
@@ -145,6 +160,8 @@ def check_solution(
         decoded.pv_export,
         decoded.pv_curtail,
         decoded.capacity_mw,
+        decoded.u_pump,
+        decoded.u_turbine,
         energy_gross_eur,
         grid_charging_cost_eur,
         market_energy_net_eur,
@@ -160,9 +177,10 @@ def check_solution(
     if prepared.pv_enabled and not np.all(np.isfinite(decoded.pv_price)):
         _fail("PV export prices are not finite")
 
-    lower_residual = np.maximum(lp.col_lower - raw, 0.0)
-    upper_residual = np.maximum(raw - lp.col_upper, 0.0)
+    lower_residual = np.maximum(model.col_lower - raw, 0.0)
+    upper_residual = np.maximum(raw - model.col_upper, 0.0)
     bound = max(float(np.max(lower_residual, initial=0.0)), float(np.max(upper_residual, initial=0.0)))
+    bound = max(bound, _commitment_residual(model, decoded))
 
     init_term = abs(decoded.energy[0] - prepared.e0_mwh)
     if prepared.e_terminal_mwh is not None:
@@ -175,13 +193,13 @@ def check_solution(
             + prepared.eta_pump
             * (
                 decoded.p_pump[t] * dt
-                - (prepared.epsilon_pump * decoded.r_up_pump[t] if lp.layout.use_r_pump else 0.0)
+                - (prepared.epsilon_pump * decoded.r_up_pump[t] if model.layout.use_r_pump else 0.0)
             )
             - (
                 decoded.p_turbine[t] * dt
                 + (
                     prepared.epsilon_turbine * decoded.r_up_turb[t]
-                    if lp.layout.use_r_turb
+                    if model.layout.use_r_turb
                     else 0.0
                 )
             )
@@ -190,12 +208,12 @@ def check_solution(
         balance = max(balance, abs(decoded.energy[t + 1] - expected))
 
     ramp = 0.0
-    if lp.layout.use_r_pump:
+    if model.layout.use_r_pump:
         ramp = max(ramp, max(0.0, decoded.p_pump[0] - decoded.r_up_pump[0]))
         for t in range(1, n):
             need = decoded.p_pump[t] - decoded.p_pump[t - 1]
             ramp = max(ramp, max(0.0, need - decoded.r_up_pump[t]))
-    if lp.layout.use_r_turb:
+    if model.layout.use_r_turb:
         ramp = max(ramp, max(0.0, decoded.p_turbine[0] - decoded.r_up_turb[0]))
         for t in range(1, n):
             need = decoded.p_turbine[t] - decoded.p_turbine[t - 1]
@@ -327,7 +345,7 @@ def check_solution(
             and init_term <= ENERGY_TOL_MWH
             and balance <= ENERGY_TOL_MWH
             and ramp <= POWER_TOL_MW
-            and pv_res <= POWER_TOL_MW
+            and pv_res <= PV_ALLOCATION_TOL_MW
             and grid <= POWER_TOL_MW
             and cap_res <= max(POWER_TOL_MW, ENERGY_TOL_MWH)
             and interval_acc <= ACCOUNTING_TOL_EUR
@@ -341,9 +359,81 @@ def check_solution(
             f"bound={bound:.3e} init/term={init_term:.3e} balance={balance:.3e} "
             f"ramp={ramp:.3e} pv={pv_res:.3e} grid={grid:.3e} capacity={cap_res:.3e} "
             f"interval_acc={interval_acc:.3e} summary_acc={summary_acc:.3e} "
-            f"objective={objective_res:.3e} status={lp.num_col}x{lp.num_row}"
+            f"objective={objective_res:.3e} status={model.num_col}x{model.num_row}"
         )
     return report
+
+
+def _commitment_residual(model: SparseModel, decoded: DecodedSolution) -> float:
+    resolved = model.resolved_commitment
+    if resolved is None:
+        return 0.0
+    prepared = model.prepared
+    residual = 0.0
+    if resolved.use_pump_commitment:
+        residual = max(
+            residual,
+            float(
+                np.max(
+                    np.maximum(
+                        decoded.p_pump - prepared.pump_bound_mw * decoded.u_pump,
+                        0.0,
+                    ),
+                    initial=0.0,
+                )
+            ),
+        )
+        if resolved.fixed_speed_pump:
+            residual = max(
+                residual,
+                float(
+                    np.max(
+                        np.maximum(
+                            resolved.rated_pump_mw * decoded.u_pump - decoded.p_pump,
+                            0.0,
+                        ),
+                        initial=0.0,
+                    )
+                ),
+            )
+    if resolved.use_turbine_commitment:
+        residual = max(
+            residual,
+            float(
+                np.max(
+                    np.maximum(
+                        decoded.p_turbine - prepared.turbine_bound_mw * decoded.u_turbine,
+                        0.0,
+                    ),
+                    initial=0.0,
+                )
+            ),
+        )
+        if resolved.turbine_minimum_mw > 0.0:
+            residual = max(
+                residual,
+                float(
+                    np.max(
+                        np.maximum(
+                            resolved.turbine_minimum_mw * decoded.u_turbine
+                            - decoded.p_turbine,
+                            0.0,
+                        ),
+                        initial=0.0,
+                    )
+                ),
+            )
+    if resolved.forbid_simultaneous:
+        residual = max(
+            residual,
+            float(
+                np.max(
+                    np.maximum(decoded.u_pump + decoded.u_turbine - 1.0, 0.0),
+                    initial=0.0,
+                )
+            ),
+        )
+    return residual
 
 
 def _copy(values: np.ndarray) -> np.ndarray:

@@ -41,6 +41,21 @@ from ui.presentation.tokens import (
     PV_HELP_ON,
     SOLVER_LOG_COPY,
 )
+from ui.services.commitment import (
+    COMMITMENT_EXPANDER,
+    COMMITMENT_TIME_NOTICE,
+    DEFAULT_MIP_GAP_PCT,
+    FIXED_SPEED_HELP,
+    FIXED_SPEED_LABEL,
+    FORBID_SIMULTANEOUS_LABEL,
+    MIP_GAP_LABEL,
+    MIP_TIME_LABEL,
+    SOLVER_CONTROLS_HEADING,
+    SOLVER_CONTROLS_HELP,
+    TURBINE_MINIMUM_INPUT_LABEL,
+    TURBINE_MINIMUM_LABEL,
+    machine_commitment_enabled,
+)
 from ui.services.configs import derived_reservoir_text
 from ui.services.demo import demo_form
 from ui.services.form import (
@@ -111,6 +126,12 @@ _KEYS = {
     "afrr_fixed_down": f"{WIDGET_PREFIX}afrr-down-p",
     "afrr_up_fraction": f"{WIDGET_PREFIX}afrr-up",
     "detailed_solver": f"{WIDGET_PREFIX}solver",
+    "fixed_speed_pump": f"{WIDGET_PREFIX}fixed-pump",
+    "turbine_minimum_enabled": f"{WIDGET_PREFIX}turb-min",
+    "turbine_minimum_output_pct": f"{WIDGET_PREFIX}turb-min-pct",
+    "forbid_simultaneous_operation": f"{WIDGET_PREFIX}no-simul",
+    "mip_gap_pct": f"{WIDGET_PREFIX}mip-gap",
+    "mip_time_limit_min": f"{WIDGET_PREFIX}mip-time",
 }
 
 
@@ -186,6 +207,12 @@ def _widget_values(form: Mapping[str, Any]) -> dict[str, Any]:
         _KEYS["afrr_fixed_down"]: coalesce_float(form.get("afrr_fixed_down"), 16.0),
         _KEYS["afrr_up_fraction"]: coalesce_float(form.get("afrr_up_fraction"), 1.0),
         _KEYS["detailed_solver"]: bool(form.get("detailed_solver")),
+        _KEYS["fixed_speed_pump"]: bool(form.get("fixed_speed_pump")),
+        _KEYS["turbine_minimum_enabled"]: bool(form.get("turbine_minimum_enabled")),
+        _KEYS["turbine_minimum_output_pct"]: coalesce_float(form.get("turbine_minimum_output_pct"), 18.0),
+        _KEYS["forbid_simultaneous_operation"]: bool(form.get("forbid_simultaneous_operation")),
+        _KEYS["mip_gap_pct"]: coalesce_float(form.get("mip_gap_pct"), DEFAULT_MIP_GAP_PCT),
+        _KEYS["mip_time_limit_min"]: coalesce_float(form.get("mip_time_limit_min"), 15.0),
     }
 
 
@@ -193,6 +220,11 @@ def _seed_widgets(form: Mapping[str, Any], *, overwrite: bool = False) -> None:
     for key, value in _widget_values(form).items():
         if overwrite or key not in st.session_state:
             st.session_state[key] = value
+            continue
+        current = st.session_state.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if not isinstance(current, (int, float)) or isinstance(current, bool):
+                st.session_state[key] = value
     if DEMO_KEY not in st.session_state:
         st.session_state[DEMO_KEY] = False
 
@@ -260,7 +292,29 @@ def _collect(previous: Mapping[str, Any]) -> dict[str, Any]:
     form["afrr_fixed_down"] = coalesce_float(st.session_state.get(_KEYS["afrr_fixed_down"]), 0.0)
     form["afrr_up_fraction"] = coalesce_float(st.session_state.get(_KEYS["afrr_up_fraction"]), 0.0)
     form["detailed_solver"] = bool(st.session_state.get(_KEYS["detailed_solver"]))
+    form["fixed_speed_pump"] = bool(st.session_state.get(_KEYS["fixed_speed_pump"]))
+    form["turbine_minimum_enabled"] = bool(st.session_state.get(_KEYS["turbine_minimum_enabled"]))
+    form["turbine_minimum_output_pct"] = coalesce_float(
+        st.session_state.get(_KEYS["turbine_minimum_output_pct"], previous.get("turbine_minimum_output_pct")),
+        18.0,
+    )
+    form["forbid_simultaneous_operation"] = bool(st.session_state.get(_KEYS["forbid_simultaneous_operation"]))
+    form["mip_gap_pct"] = coalesce_float(
+        st.session_state.get(_KEYS["mip_gap_pct"], previous.get("mip_gap_pct")),
+        DEFAULT_MIP_GAP_PCT,
+    )
+    form["mip_time_limit_min"] = coalesce_float(
+        st.session_state.get(_KEYS["mip_time_limit_min"], previous.get("mip_time_limit_min")),
+        15.0,
+    )
     return form
+
+
+def _ensure_session_number(key: str, fallback: object, default: float) -> None:
+    current = st.session_state.get(key)
+    if isinstance(current, (int, float)) and not isinstance(current, bool):
+        return
+    st.session_state[key] = coalesce_float(fallback, default)
 
 
 def _persist(state: dict[str, Any]) -> None:
@@ -408,6 +462,49 @@ def render_configure(state: dict[str, Any]) -> None:
             st.number_input("Turbine ramp-up (min)", min_value=0.0, disabled=disabled, key=_KEYS["turbine_ramp_up_min"])
             st.number_input("Turbine ramp-down (min)", min_value=0.0, disabled=disabled, key=_KEYS["turbine_ramp_down_min"])
             st.number_input("Turbine ramp power fraction", min_value=0.0, max_value=1.0, disabled=disabled, key=_KEYS["turbine_ramp_power_frac"])
+        st.divider()
+        st.markdown(f"**{COMMITMENT_EXPANDER}**")
+        st.checkbox(
+            FIXED_SPEED_LABEL,
+            disabled=disabled,
+            key=_KEYS["fixed_speed_pump"],
+            help=FIXED_SPEED_HELP,
+        )
+        st.checkbox(
+            TURBINE_MINIMUM_LABEL,
+            disabled=disabled,
+            key=_KEYS["turbine_minimum_enabled"],
+        )
+        if st.session_state.get(_KEYS["turbine_minimum_enabled"]):
+            if form.get("turbine_minimum_enabled") is not True:
+                st.session_state[_KEYS["turbine_minimum_output_pct"]] = coalesce_float(
+                    form.get("turbine_minimum_output_pct"), 18.0
+                )
+            else:
+                _ensure_session_number(
+                    _KEYS["turbine_minimum_output_pct"],
+                    form.get("turbine_minimum_output_pct"),
+                    18.0,
+                )
+            st.number_input(
+                TURBINE_MINIMUM_INPUT_LABEL,
+                min_value=0.0,
+                max_value=100.0,
+                disabled=disabled,
+                key=_KEYS["turbine_minimum_output_pct"],
+            )
+        st.checkbox(
+            FORBID_SIMULTANEOUS_LABEL,
+            disabled=disabled,
+            key=_KEYS["forbid_simultaneous_operation"],
+        )
+        live_commitment = {
+            "fixed_speed_pump": st.session_state.get(_KEYS["fixed_speed_pump"]),
+            "turbine_minimum_enabled": st.session_state.get(_KEYS["turbine_minimum_enabled"]),
+            "forbid_simultaneous_operation": st.session_state.get(_KEYS["forbid_simultaneous_operation"]),
+        }
+        if machine_commitment_enabled(live_commitment):
+            st.caption(COMMITMENT_TIME_NOTICE)
 
     render_section_heading("Grid connection")
     st.checkbox(
@@ -525,6 +622,39 @@ def render_configure(state: dict[str, Any]) -> None:
                 )
     with st.expander("Solver and diagnostics", expanded=False):
         st.checkbox(SOLVER_LOG_COPY, disabled=disabled, key=_KEYS["detailed_solver"])
+        solver_commitment = {
+            "fixed_speed_pump": st.session_state.get(_KEYS["fixed_speed_pump"]),
+            "turbine_minimum_enabled": st.session_state.get(_KEYS["turbine_minimum_enabled"]),
+            "forbid_simultaneous_operation": st.session_state.get(_KEYS["forbid_simultaneous_operation"]),
+        }
+        if machine_commitment_enabled(solver_commitment):
+            st.markdown(f"**{SOLVER_CONTROLS_HEADING}**")
+            if not machine_commitment_enabled(form):
+                st.session_state[_KEYS["mip_gap_pct"]] = coalesce_float(
+                    form.get("mip_gap_pct"), DEFAULT_MIP_GAP_PCT
+                )
+                st.session_state[_KEYS["mip_time_limit_min"]] = coalesce_float(
+                    form.get("mip_time_limit_min"), 15.0
+                )
+            else:
+                _ensure_session_number(
+                    _KEYS["mip_gap_pct"], form.get("mip_gap_pct"), DEFAULT_MIP_GAP_PCT
+                )
+                _ensure_session_number(_KEYS["mip_time_limit_min"], form.get("mip_time_limit_min"), 15.0)
+            st.number_input(
+                MIP_GAP_LABEL,
+                min_value=0.0,
+                max_value=100.0,
+                disabled=disabled,
+                key=_KEYS["mip_gap_pct"],
+            )
+            st.number_input(
+                MIP_TIME_LABEL,
+                min_value=0.0,
+                disabled=disabled,
+                key=_KEYS["mip_time_limit_min"],
+            )
+            st.caption(SOLVER_CONTROLS_HELP)
 
     incoming = demo_form() if demo else _collect(previous)
     updated = apply_form_transitions(previous, incoming, reset_grid=reset_grid and not demo)

@@ -28,10 +28,11 @@ from ui.presentation.tokens import (
     RESULTS_SUBTITLE_MULTI,
     RESULTS_SUBTITLE_ONE,
 )
-from ui.services.artifacts import result_is_valid
+from ui.services.artifacts import ERROR_BINDING, result_is_valid
 from ui.services.launch import TEST_HOOKS
 from ui.services.result_format import default_explorer_market
 from ui.services.result_view import ResultViewError, load_result_display
+from ui.services.result_warning import load_best_available_warning
 from ui.services.explorer_query import ExplorerError, explorer_weeks_by_market
 from ui.services.explorer_weeks import default_week_id
 from ui.views.results_detail import render_market_detail
@@ -125,6 +126,20 @@ def render_results(state: dict[str, Any]) -> None:
     )
     _persist(state)
     _render_header(payload)
+    warning = None
+    try:
+        warning = load_best_available_warning(
+            result, job=job, outputs_root=TEST_HOOKS.get("outputs_root")
+        )
+    except ValueError as exc:
+        if str(exc) != ERROR_BINDING:
+            render_status_panel("danger", RESULTS_ERROR_TITLE, RESULTS_ERROR_BODY)
+            return
+    except (OSError, TypeError):
+        render_status_panel("danger", RESULTS_ERROR_TITLE, RESULTS_ERROR_BODY)
+        return
+    if warning is not None:
+        render_status_panel("warning", warning["title"], warning["body"])
     clicked = render_result_tabs(str(view["active_tab"]), interactive=True)
     if clicked and clicked != view["active_tab"]:
         set_results_tab(state, clicked)

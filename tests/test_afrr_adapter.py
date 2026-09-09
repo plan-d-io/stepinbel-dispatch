@@ -24,7 +24,7 @@ from stepinbel.data.load import MarketDataSlice, load_market_data
 from stepinbel.markets.base import MarketInputError
 from stepinbel.markets.afrr import build_afrr_inputs
 from stepinbel.optimizer import ModelError, solve_case
-from stepinbel.optimizer.model import build_sparse_lp, prepare_physical
+from stepinbel.optimizer.model import build_sparse_model, prepare_physical
 
 
 def _utc(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
@@ -503,7 +503,7 @@ def test_downward_pumping_available_without_down_capacity_and_no_pump_rows() -> 
     assert not any(item.direction == "down" for item in market.capacity_commitments)
     assert np.all(market.buy_upper_mw == 1.0)
     np.testing.assert_array_equal(market.buy_price_eur_mwh, np.full(16, 8.0))
-    lp = build_sparse_lp(prepare_physical(slice_.config, market, None))
+    lp = build_sparse_model(prepare_physical(slice_.config, market, None))
     assert lp.has_downward_pump_capacity_rows is False
 
 

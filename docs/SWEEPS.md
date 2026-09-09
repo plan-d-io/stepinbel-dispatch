@@ -40,8 +40,9 @@ valid when you construct `AssetSweepCandidate` objects directly.
 
 Schema versions:
 
-- `ASSET_SWEEP_REQUEST_SCHEMA_VERSION = 1`
-- `ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION = 1`
+- `ASSET_SWEEP_REQUEST_SCHEMA_VERSION = 1` for ordinary LP sweeps. Version `2`
+  is used when the template enables machine commitment.
+- `ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION = 1` or `2`, matching the request.
 - `MAX_ASSET_SWEEP_CANDIDATES = 24`
 
 One sweep covers exactly one market: day-ahead, mFRR, or aFRR. Do not mix
@@ -125,5 +126,6 @@ diagnostic material.
 
 Day-ahead has no applicable Elia conformance reference. mFRR and aFRR reports
 cite the accepted methodology filename and hash. Those documents are not exact
-Watts.Happening-conformance claims. Combined markets, MILP, god, active, and
-FCR remain outside scope. CLI, charts, and UI remain unbuilt.
+Watts.Happening-conformance claims. Combined markets, god, active, and FCR
+remain outside scope. Optional machine commitment, when enabled, is copied
+onto every sweep child. The Streamlit application does not expose sweeps.

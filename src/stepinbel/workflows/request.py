@@ -16,15 +16,19 @@ from stepinbel.optimizer import SolverOptions
 from stepinbel.workflows.constants import (
     BEHAVIOURAL_BASELINE,
     CASE_RUN_REQUEST_SCHEMA_VERSION,
-    RUN_ARTIFACT_SCHEMA_VERSION,
+    CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
+    SUPPORTED_CASE_SCHEMA_VERSIONS,
 )
 from stepinbel.workflows.errors import RunRequestError
 from stepinbel.workflows.serialize import (
     dumps_json,
     loads_json,
     payload_to_request_fields,
+    preferred_case_schema_versions,
     request_to_payload,
     require_absolute_path,
+    require_matching_case_schema_versions,
+    require_schema_version,
     require_sha256,
     require_utc_seconds,
     resolve_builder_path,
@@ -57,10 +61,19 @@ class CaseRunRequest:
     behavioural_baseline: Mapping[str, str]
 
     def __post_init__(self) -> None:
-        if self.request_schema_version != CASE_RUN_REQUEST_SCHEMA_VERSION:
-            raise RunRequestError("request_schema_version is not supported", category="invalid_request")
-        if self.artifact_schema_version != RUN_ARTIFACT_SCHEMA_VERSION:
-            raise RunRequestError("artifact_schema_version is not supported", category="invalid_request")
+        require_schema_version(
+            self.request_schema_version,
+            SUPPORTED_CASE_SCHEMA_VERSIONS,
+            "request_schema_version",
+        )
+        require_schema_version(
+            self.artifact_schema_version,
+            SUPPORTED_CASE_SCHEMA_VERSIONS,
+            "artifact_schema_version",
+        )
+        require_matching_case_schema_versions(
+            self.request_schema_version, self.artifact_schema_version
+        )
         validate_run_id(self.run_id)
         object.__setattr__(self, "created_at_utc", require_utc_seconds(self.created_at_utc, "created_at_utc"))
         if not isinstance(self.software_version, str) or not self.software_version:
@@ -69,6 +82,22 @@ class CaseRunRequest:
             raise RunRequestError("config must be a SimulationConfig", category="invalid_request")
         if not isinstance(self.solver_options, SolverOptions):
             raise RunRequestError("solver_options must be a SolverOptions", category="invalid_request")
+        if (
+            self.request_schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION
+            and self.config.machine_commitment.physically_active()
+        ):
+            raise RunRequestError(
+                "schema-v1 requests cannot represent enabled machine-commitment options",
+                category="invalid_request",
+            )
+        if (
+            self.request_schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2
+            and not self.config.machine_commitment.physically_active()
+        ):
+            raise RunRequestError(
+                "schema-v2 requests require at least one enabled machine-commitment option",
+                category="invalid_request",
+            )
         object.__setattr__(self, "data_directory", require_absolute_path(self.data_directory, "data_directory"))
         object.__setattr__(self, "output_directory", require_absolute_path(self.output_directory, "output_directory"))
         object.__setattr__(
@@ -151,12 +180,13 @@ def build_case_run_request(
     except Exception as exc:
         raise RunRequestError(str(exc), category="data_bundle") from exc
 
+    request_version, artifact_version = preferred_case_schema_versions(config)
     return CaseRunRequest(
-        request_schema_version=CASE_RUN_REQUEST_SCHEMA_VERSION,
+        request_schema_version=request_version,
         run_id=run_id,
         created_at_utc=created_at_utc,
         software_version=__version__,
-        artifact_schema_version=RUN_ARTIFACT_SCHEMA_VERSION,
+        artifact_schema_version=artifact_version,
         data_directory=data_root,
         data_manifest_sha256=bundle.manifest_sha256,
         output_directory=output_root,

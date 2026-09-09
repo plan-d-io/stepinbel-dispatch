@@ -18,7 +18,26 @@ POWER_TOL_MW = 1e-7
 ENERGY_TOL_MWH = 1e-7
 ACCOUNTING_TOL_EUR = 1e-5
 SIMULTANEOUS_TOL_MW = 1e-6
+PV_ALLOCATION_TOL_MW = 1e-6
 PV_LOAD_FACTOR_TOL = 1e-9
+DEFAULT_MIP_REL_GAP = 0.015
+DEFAULT_MIP_TIME_LIMIT_S = 900.0
+HIGHS_RANDOM_SEED = 0
+TERMINATION_ACCEPTED_WITHIN_GAP = "accepted_within_requested_mip_gap"
+TERMINATION_TIME_LIMIT_FEASIBLE = "time_limit_feasible_outside_requested_gap"
+TERMINATION_NO_FEASIBLE_SOLUTION = "no_feasible_solution"
+TERMINATION_SOLVER_FAILURE = "solver_failure"
+USABLE_MILP_TERMINATIONS = frozenset(
+    {TERMINATION_ACCEPTED_WITHIN_GAP, TERMINATION_TIME_LIMIT_FEASIBLE}
+)
+MIP_TIME_LIMIT_FEASIBLE_WARNING = (
+    "Time limit reached with a feasible incumbent; requested MIP gap was not reached."
+)
+COMPARISON_MIP_TIME_LIMIT_WARNING = (
+    "One or more dedicated-market solves reached the time limit with a "
+    "feasible incumbent outside the requested MIP gap. Rankings use those "
+    "incumbents; they are not accepted within the requested gap."
+)
 
 DISPATCH_COLUMNS: tuple[str, ...] = (
     "datetime_utc",
@@ -95,12 +114,24 @@ def _require_finite(value: object, field: str) -> float:
 
 @dataclass(frozen=True)
 class SolverOptions:
-    """Production HiGHS options exposed to callers. Internal seeds stay fixed."""
+    """Production HiGHS options exposed to callers. Internal seeds stay fixed.
+
+    MIP controls are applied only when a physical commitment option is enabled.
+    They do not select LP versus MILP independently of those assumptions.
+    """
 
     detailed_output: bool = False
+    mip_rel_gap: float = DEFAULT_MIP_REL_GAP
+    time_limit_s: float = DEFAULT_MIP_TIME_LIMIT_S
 
     def __post_init__(self) -> None:
         _require_bool(self.detailed_output, "detailed_output")
+        gap = _require_finite(self.mip_rel_gap, "mip_rel_gap")
+        if not 0.0 <= gap <= 1.0:
+            raise ModelError("mip_rel_gap must be in [0, 1]")
+        limit = _require_finite(self.time_limit_s, "time_limit_s")
+        if limit <= 0.0:
+            raise ModelError("time_limit_s must be > 0")
 
 
 @dataclass(frozen=True)

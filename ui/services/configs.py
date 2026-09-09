@@ -18,6 +18,8 @@ from stepinbel.config import (
     SiteConfig,
 )
 
+from ui.services.commitment import build_machine_commitment
+
 from ui.services.form import (
     BID_FIXED,
     STORAGE_POND,
@@ -147,6 +149,7 @@ def build_simulation_configs(form: Mapping[str, Any]) -> list[tuple[str, Simulat
     period = BelgianDeliveryPeriod(start, end)
     asset = build_asset(form)
     site = build_site(form)
+    commitment = build_machine_commitment(form)
     configs: list[tuple[str, SimulationConfig]] = []
     for market in markets:
         configs.append(
@@ -157,6 +160,7 @@ def build_simulation_configs(form: Mapping[str, Any]) -> list[tuple[str, Simulat
                     market_case=build_market_case(form, market),
                     asset=asset,
                     site=site,
+                    machine_commitment=commitment,
                 ),
             )
         )

@@ -11,7 +11,6 @@ from stepinbel.config import ConfigError
 from stepinbel.data import DataAccessError, DataBundleError, open_published_bundle
 from stepinbel.markets import MarketInputError
 from stepinbel.optimizer import ModelError, SolverError
-from stepinbel.reporting.constants import ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION
 from stepinbel.reporting.io import ArtifactError, atomic_write_text
 from stepinbel.workflows.errors import (
     RunCancelledError,
@@ -110,7 +109,7 @@ def execute_asset_sweep(
         request.run_id,
         progress,
         stages=stages,
-        artifact_schema_version=ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+        artifact_schema_version=request.asset_sweep_artifact_schema_version,
     )
     atomic_write_text(output / "asset_sweep_request.json", dumps_asset_sweep_request(request))
     current = stages[0]

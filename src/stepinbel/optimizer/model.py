@@ -1,4 +1,4 @@
-"""Sparse continuous PHS LP construction. Solver-neutral."""
+"""Sparse PHS model construction. Solver-neutral LP or MILP."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import numpy as np
 
 from stepinbel.config import SimulationConfig
 from stepinbel.markets.base import MarketDispatchInputs
+from stepinbel.optimizer.commitment import ResolvedCommitment
 from stepinbel.optimizer.types import DT_H, CapacityCommitment, ModelError
 
 _INF = 1.0e30
@@ -30,6 +31,8 @@ class VariableLayout:
     idx_r_pump: int | None
     idx_r_turb: int | None
     idx_capacity: int | None
+    idx_u_pump: int | None
+    idx_u_turb: int | None
     num_col: int
 
 
@@ -61,7 +64,7 @@ class PreparedPhysical:
 
 
 @dataclass(frozen=True)
-class SparseLp:
+class SparseModel:
     layout: VariableLayout
     prepared: PreparedPhysical
     col_cost: np.ndarray
@@ -78,6 +81,8 @@ class SparseLp:
     n_pump_ramp_up_vars: int
     n_turbine_ramp_up_vars: int
     has_downward_pump_capacity_rows: bool
+    integrality: np.ndarray | None
+    resolved_commitment: ResolvedCommitment | None
 
 
 def prepare_physical(
@@ -163,7 +168,10 @@ def prepare_physical(
     )
 
 
-def _layout(prepared: PreparedPhysical) -> VariableLayout:
+def _layout(
+    prepared: PreparedPhysical,
+    resolved: ResolvedCommitment | None = None,
+) -> VariableLayout:
     n = prepared.n
     use_r_pump = prepared.epsilon_pump > 0.0
     use_r_turb = prepared.epsilon_turbine > 0.0
@@ -197,6 +205,14 @@ def _layout(prepared: PreparedPhysical) -> VariableLayout:
     if n_c:
         idx_capacity = idx
         idx += n_c
+    idx_u_pump = None
+    if resolved is not None and resolved.use_pump_commitment:
+        idx_u_pump = idx
+        idx += n
+    idx_u_turb = None
+    if resolved is not None and resolved.use_turbine_commitment:
+        idx_u_turb = idx
+        idx += n
     return VariableLayout(
         n=n,
         pv_enabled=prepared.pv_enabled,
@@ -213,6 +229,8 @@ def _layout(prepared: PreparedPhysical) -> VariableLayout:
         idx_r_pump=idx_r_pump,
         idx_r_turb=idx_r_turb,
         idx_capacity=idx_capacity,
+        idx_u_pump=idx_u_pump,
+        idx_u_turb=idx_u_turb,
         num_col=idx,
     )
 
@@ -242,8 +260,11 @@ class _Matrix:
         return starts, indices, values, num_nz
 
 
-def build_sparse_lp(prepared: PreparedPhysical) -> SparseLp:
-    layout = _layout(prepared)
+def build_sparse_model(
+    prepared: PreparedPhysical,
+    resolved: ResolvedCommitment | None = None,
+) -> SparseModel:
+    layout = _layout(prepared, resolved)
     n = prepared.n
     dt = prepared.dt_h
     matrix = _Matrix(layout.num_col)
@@ -376,6 +397,13 @@ def build_sparse_lp(prepared: PreparedPhysical) -> SparseLp:
                 )
                 row += 1
 
+    if resolved is not None:
+        if layout.idx_u_pump is not None:
+            col_upper[layout.idx_u_pump : layout.idx_u_pump + n] = 1.0
+        if layout.idx_u_turb is not None:
+            col_upper[layout.idx_u_turb : layout.idx_u_turb + n] = 1.0
+        row = _add_commitment_rows(matrix, layout, prepared, resolved, row)
+
     num_row = row
     row_lower = np.empty(num_row, dtype=np.float64)
     row_upper = np.empty(num_row, dtype=np.float64)
@@ -443,11 +471,15 @@ def build_sparse_lp(prepared: PreparedPhysical) -> SparseLp:
                 row_upper[row] = prepared.e_max_mwh
                 row += 1
 
+    if resolved is not None:
+        row = _fill_commitment_row_bounds(row_lower, row_upper, n, resolved, row)
+
     if row != num_row:
-        raise ModelError("sparse LP row bounds do not match constructed rows")
+        raise ModelError("sparse model row bounds do not match constructed rows")
 
     starts, indices, values, num_nz = matrix.freeze()
-    return SparseLp(
+    integrality = _integrality_vector(layout)
+    return SparseModel(
         layout=layout,
         prepared=prepared,
         col_cost=col_cost,
@@ -464,4 +496,90 @@ def build_sparse_lp(prepared: PreparedPhysical) -> SparseLp:
         n_pump_ramp_up_vars=n if layout.use_r_pump else 0,
         n_turbine_ramp_up_vars=n if layout.use_r_turb else 0,
         has_downward_pump_capacity_rows=False,
+        integrality=integrality,
+        resolved_commitment=resolved,
     )
+
+
+def _add_commitment_rows(
+    matrix: _Matrix,
+    layout: VariableLayout,
+    prepared: PreparedPhysical,
+    resolved: ResolvedCommitment,
+    row: int,
+) -> int:
+    n = prepared.n
+    if resolved.use_pump_commitment:
+        assert layout.idx_u_pump is not None
+        for t in range(n):
+            matrix.put(layout.idx_pump + t, row, 1.0)
+            matrix.put(layout.idx_u_pump + t, row, -float(prepared.pump_bound_mw[t]))
+            row += 1
+            if resolved.fixed_speed_pump:
+                matrix.put(layout.idx_pump + t, row, 1.0)
+                matrix.put(layout.idx_u_pump + t, row, -resolved.rated_pump_mw)
+                row += 1
+    if resolved.use_turbine_commitment:
+        assert layout.idx_u_turb is not None
+        for t in range(n):
+            matrix.put(layout.idx_turb + t, row, 1.0)
+            matrix.put(layout.idx_u_turb + t, row, -float(prepared.turbine_bound_mw[t]))
+            row += 1
+            if resolved.turbine_minimum_mw > 0.0:
+                matrix.put(layout.idx_turb + t, row, 1.0)
+                matrix.put(layout.idx_u_turb + t, row, -resolved.turbine_minimum_mw)
+                row += 1
+    if resolved.forbid_simultaneous:
+        assert layout.idx_u_pump is not None
+        assert layout.idx_u_turb is not None
+        for t in range(n):
+            matrix.put(layout.idx_u_pump + t, row, 1.0)
+            matrix.put(layout.idx_u_turb + t, row, 1.0)
+            row += 1
+    return row
+
+
+def _fill_commitment_row_bounds(
+    row_lower: np.ndarray,
+    row_upper: np.ndarray,
+    n: int,
+    resolved: ResolvedCommitment,
+    row: int,
+) -> int:
+    if resolved.use_pump_commitment:
+        for _t in range(n):
+            row_lower[row] = -_INF
+            row_upper[row] = 0.0
+            row += 1
+            if resolved.fixed_speed_pump:
+                row_lower[row] = 0.0
+                row_upper[row] = _INF
+                row += 1
+    if resolved.use_turbine_commitment:
+        for _t in range(n):
+            row_lower[row] = -_INF
+            row_upper[row] = 0.0
+            row += 1
+            if resolved.turbine_minimum_mw > 0.0:
+                row_lower[row] = 0.0
+                row_upper[row] = _INF
+                row += 1
+    if resolved.forbid_simultaneous:
+        for _t in range(n):
+            row_lower[row] = -_INF
+            row_upper[row] = 1.0
+            row += 1
+    return row
+
+
+def _integrality_vector(layout: VariableLayout) -> np.ndarray | None:
+    if layout.idx_u_pump is None and layout.idx_u_turb is None:
+        return None
+    integrality = np.zeros(layout.num_col, dtype=np.int32)
+    n = layout.n
+    if layout.idx_u_pump is not None:
+        integrality[layout.idx_u_pump : layout.idx_u_pump + n] = 1
+    if layout.idx_u_turb is not None:
+        integrality[layout.idx_u_turb : layout.idx_u_turb + n] = 1
+    integrality.setflags(write=False)
+    return integrality

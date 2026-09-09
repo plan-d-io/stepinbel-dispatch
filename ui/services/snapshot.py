@@ -11,6 +11,13 @@ from typing import Any, Mapping
 from stepinbel.config import ConfigError
 from stepinbel.data import DataAccessError, DataBundleError, resolve_period
 
+from ui.services.commitment import (
+    commitment_continue_reason,
+    commitment_snapshot_payload,
+    snapshot_commitment_is_valid,
+    snapshot_solver_controls_are_valid,
+    solver_controls_snapshot_payload,
+)
 from ui.services.configs import build_simulation_configs, form_period
 from ui.services.errors import user_facing_error
 from ui.flow import is_exact_int
@@ -56,7 +63,7 @@ def lightweight_continue_reason(form: Mapping[str, Any]) -> str | None:
                 return FIXED_PV_PRICE_REQUIRED
         except (TypeError, ValueError):
             return FIXED_PV_PRICE_REQUIRED
-    return None
+    return commitment_continue_reason(form)
 
 
 def as_serialisable(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -139,6 +146,8 @@ def build_snapshot(form: Mapping[str, Any], *, demo: bool) -> dict[str, Any]:
         },
         "balancing": _balancing_snapshot(form),
         "detailed_solver_output": bool(form.get("detailed_solver")),
+        "machine_commitment": commitment_snapshot_payload(form),
+        "solver_controls": solver_controls_snapshot_payload(form),
         "derived": {
             "e_max_mwh": float(asset.e_max_mwh()),
             "round_trip_efficiency": float(asset.round_trip_efficiency()),
@@ -396,6 +405,41 @@ def _snapshot_integrity_reason(snapshot: Mapping[str, Any] | None) -> str | None
     if not isinstance(snapshot.get("detailed_solver_output"), bool):
         return INCOMPLETE_SNAPSHOT
     form = snapshot.get("form")
+    if not snapshot_commitment_is_valid(snapshot.get("machine_commitment"), form if isinstance(form, Mapping) else None):
+        return INCOMPLETE_SNAPSHOT
+    commitment = snapshot.get("machine_commitment")
+    active = False
+    if isinstance(commitment, Mapping):
+        active = bool(
+            commitment.get("fixed_speed_pump")
+            or commitment.get("turbine_minimum_enabled")
+            or commitment.get("forbid_simultaneous_operation")
+        )
+    if not snapshot_solver_controls_are_valid(
+        snapshot.get("solver_controls"),
+        form if isinstance(form, Mapping) else None,
+        required=True,
+    ):
+        return INCOMPLETE_SNAPSHOT
+    if active:
+        fraction = commitment.get("turbine_minimum_output_fraction") if isinstance(commitment, Mapping) else None
+        physically_active = bool(
+            (isinstance(commitment, Mapping) and commitment.get("fixed_speed_pump"))
+            or (isinstance(commitment, Mapping) and commitment.get("forbid_simultaneous_operation"))
+            or (isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and float(fraction) > 0.0)
+        )
+        if not physically_active:
+            return INCOMPLETE_SNAPSHOT
+    elif isinstance(commitment, Mapping) and (
+        commitment.get("fixed_speed_pump")
+        or commitment.get("forbid_simultaneous_operation")
+        or (
+            isinstance(commitment.get("turbine_minimum_output_fraction"), (int, float))
+            and not isinstance(commitment.get("turbine_minimum_output_fraction"), bool)
+            and float(commitment.get("turbine_minimum_output_fraction")) > 0.0
+        )
+    ):
+        return INCOMPLETE_SNAPSHOT
     fingerprint = snapshot.get("form_fingerprint")
     if not isinstance(form, Mapping) or not isinstance(fingerprint, str) or not fingerprint:
         return INCOMPLETE_SNAPSHOT

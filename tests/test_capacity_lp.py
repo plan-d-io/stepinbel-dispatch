@@ -5,7 +5,7 @@ import pytest
 
 from stepinbel.config import AssetConfig
 from stepinbel.optimizer import ModelError
-from stepinbel.optimizer.model import build_sparse_lp, prepare_physical
+from stepinbel.optimizer.model import build_sparse_model, prepare_physical
 from stepinbel.optimizer.types import CAPACITY_RESULT_SCHEMA, CapacityCommitment
 from tests.da_solve_helpers import solve_arrays
 
@@ -176,7 +176,7 @@ def test_built_lp_has_no_downward_pump_capacity_rows() -> None:
             ),
         ),
     )
-    lp = build_sparse_lp(prepare_physical(config, market, None))
+    lp = build_sparse_model(prepare_physical(config, market, None))
     assert lp.has_downward_pump_capacity_rows is False
 
 

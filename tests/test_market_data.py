@@ -188,7 +188,7 @@ def test_import_stepinbel_does_not_import_pyarrow_or_highspy() -> None:
         "import stepinbel\n"
         "assert 'pyarrow' not in sys.modules\n"
         "assert 'highspy' not in sys.modules\n"
-        "assert stepinbel.__version__ == '0.1.0'\n"
+        "assert stepinbel.__version__ == '0.2.0'\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", script], check=False, capture_output=True, text=True

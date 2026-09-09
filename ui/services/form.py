@@ -106,6 +106,12 @@ def default_live_form() -> dict[str, Any]:
         "afrr_fixed_down": 16.0,
         "afrr_up_fraction": 1.0,
         "detailed_solver": False,
+        "fixed_speed_pump": False,
+        "turbine_minimum_enabled": False,
+        "turbine_minimum_output_pct": 18.0,
+        "forbid_simultaneous_operation": False,
+        "mip_gap_pct": 1.5,
+        "mip_time_limit_min": 15.0,
     }
 
 

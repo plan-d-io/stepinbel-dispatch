@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
@@ -9,6 +10,7 @@ import numpy as np
 from stepinbel.config import (
     AssetConfig,
     DayAheadCase,
+    MachineCommitmentConfig,
     SimulationConfig,
     SiteConfig,
     UtcPeriod,
@@ -17,6 +19,7 @@ from stepinbel.data.coverage import ResolvedPeriod, window_from_period
 from stepinbel.markets.base import MarketDispatchInputs
 from stepinbel.optimizer import SolverOptions
 from stepinbel.optimizer.solve import solve_from_inputs
+from stepinbel.optimizer.types import TERMINATION_TIME_LIMIT_FEASIBLE
 
 
 def utc_horizon(n: int, start: datetime | None = None) -> tuple[datetime, ...]:
@@ -53,6 +56,7 @@ def solve_arrays(
     commitments=(),
     pv_load_factor: np.ndarray | None = None,
     options: SolverOptions | None = None,
+    commitment: MachineCommitmentConfig | None = None,
     day_ahead_price: np.ndarray | None = None,
 ):
     sell = np.asarray(sell, dtype=np.float64)
@@ -74,6 +78,7 @@ def solve_arrays(
         market_case=DayAheadCase(),
         asset=asset or AssetConfig(),
         site=site or SiteConfig(),
+        machine_commitment=commitment or MachineCommitmentConfig(),
     )
     if config.pv_enabled():
         resolved = ResolvedPeriod(
@@ -91,4 +96,22 @@ def solve_arrays(
         market_inputs=market,
         pv_load_factor=pv_load_factor,
         options=options,
+    )
+
+
+def relabel_time_limit_feasible(solved, *, achieved_gap: float = 0.02):
+    """Construct a usable time-limited outcome from a physically valid solve."""
+    diagnostics = dict(solved.diagnostics)
+    diagnostics["termination"] = TERMINATION_TIME_LIMIT_FEASIBLE
+    diagnostics["achieved_mip_gap"] = float(achieved_gap)
+    diagnostics["mip_gap"] = float(achieved_gap)
+    diagnostics["has_incumbent"] = True
+    return replace(
+        solved,
+        status="time_limit",
+        status_raw="kTimeLimit",
+        classification=TERMINATION_TIME_LIMIT_FEASIBLE,
+        has_incumbent=True,
+        mip_gap=float(achieved_gap),
+        diagnostics=diagnostics,
     )

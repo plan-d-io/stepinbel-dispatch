@@ -15,13 +15,14 @@ from stepinbel.config import (
     DayAheadCase,
     FixedMinimumCapacityBid,
     HistoricalQuantileCapacityBid,
+    MachineCommitmentConfig,
     MFRRCase,
     Period,
     SimulationConfig,
     SiteConfig,
     UtcPeriod,
 )
-from stepinbel.optimizer import SolverOptions
+from stepinbel.optimizer import ModelError, SolverOptions
 from stepinbel.workflows import (
     build_asset_sweep_request,
     build_case_run_request,
@@ -177,9 +178,32 @@ def build_site(namespace: argparse.Namespace) -> SiteConfig:
 
 
 def build_solver_options(namespace: argparse.Namespace) -> SolverOptions:
+    kwargs: dict[str, Any] = {}
     if has_option(namespace, "detailed_solver_output"):
-        return SolverOptions(detailed_output=bool(option_value(namespace, "detailed_solver_output")))
-    return SolverOptions()
+        kwargs["detailed_output"] = bool(option_value(namespace, "detailed_solver_output"))
+    if has_option(namespace, "mip_rel_gap"):
+        kwargs["mip_rel_gap"] = option_value(namespace, "mip_rel_gap")
+    if has_option(namespace, "mip_time_limit_s"):
+        kwargs["time_limit_s"] = option_value(namespace, "mip_time_limit_s")
+    try:
+        return SolverOptions(**kwargs)
+    except ModelError as exc:
+        raise CliError(str(exc)) from exc
+
+
+def build_machine_commitment(namespace: argparse.Namespace) -> MachineCommitmentConfig:
+    kwargs: dict[str, Any] = {}
+    if has_option(namespace, "fixed_speed_pump"):
+        kwargs["fixed_speed_pump"] = bool(option_value(namespace, "fixed_speed_pump"))
+    if has_option(namespace, "turbine_minimum_output_fraction"):
+        kwargs["turbine_minimum_output_fraction"] = option_value(
+            namespace, "turbine_minimum_output_fraction"
+        )
+    if has_option(namespace, "forbid_simultaneous_operation"):
+        kwargs["forbid_simultaneous_operation"] = bool(
+            option_value(namespace, "forbid_simultaneous_operation")
+        )
+    return MachineCommitmentConfig(**kwargs)
 
 
 def _prefixed(prefix: str, name: str) -> str:
@@ -288,6 +312,7 @@ def build_simulation_config(
         market_case=build_market_case(namespace, market, prefix=prefix),
         asset=asset if asset is not None else build_asset(namespace),
         site=build_site(namespace),
+        machine_commitment=build_machine_commitment(namespace),
     )
 
 
@@ -389,6 +414,7 @@ def build_comparison_request(namespace: argparse.Namespace):
     period = build_period(namespace)
     asset = build_asset(namespace)
     site = build_site(namespace)
+    commitment = build_machine_commitment(namespace)
     builders = {
         "da": lambda: DayAheadCase(),
         "mfrr": lambda: build_market_case(namespace, "mfrr", prefix="mfrr_"),
@@ -400,6 +426,7 @@ def build_comparison_request(namespace: argparse.Namespace):
             market_case=builders[market](),
             asset=asset,
             site=site,
+            machine_commitment=commitment,
         )
         for market in selected
     }

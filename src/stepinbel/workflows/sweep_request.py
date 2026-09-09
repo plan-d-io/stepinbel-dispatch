@@ -23,20 +23,26 @@ from stepinbel.reporting.constants import (
 )
 from stepinbel.workflows.constants import (
     ASSET_SWEEP_REQUEST_SCHEMA_VERSION,
+    ASSET_SWEEP_REQUEST_SCHEMA_VERSION_V2,
     BEHAVIOURAL_BASELINE,
     CASE_RUN_REQUEST_SCHEMA_VERSION,
+    CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
     MAX_ASSET_SWEEP_CANDIDATES,
     RUN_ARTIFACT_SCHEMA_VERSION,
+    SUPPORTED_SWEEP_SCHEMA_VERSIONS,
 )
 from stepinbel.workflows.errors import RunRequestError
 from stepinbel.workflows.request import CaseRunRequest, case_run_request_from_payload
 from stepinbel.workflows.serialize import (
     dumps_json,
     loads_json,
+    preferred_case_schema_versions,
     request_to_payload,
     require_absolute_path,
     require_keys,
     require_mapping,
+    require_matching_case_schema_versions,
+    require_schema_version,
     require_sha256,
     require_str,
     require_utc_seconds,
@@ -326,15 +332,19 @@ class AssetSweepRequest:
 
     def __post_init__(self) -> None:
         try:
-            _require_schema_version(
+            require_schema_version(
                 self.asset_sweep_request_schema_version,
-                ASSET_SWEEP_REQUEST_SCHEMA_VERSION,
+                SUPPORTED_SWEEP_SCHEMA_VERSIONS,
                 "asset_sweep_request_schema_version",
             )
-            _require_schema_version(
+            require_schema_version(
                 self.asset_sweep_artifact_schema_version,
-                ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+                SUPPORTED_SWEEP_SCHEMA_VERSIONS,
                 "asset_sweep_artifact_schema_version",
+            )
+            require_matching_case_schema_versions(
+                self.asset_sweep_request_schema_version,
+                self.asset_sweep_artifact_schema_version,
             )
             object.__setattr__(self, "run_id", validate_run_id(self.run_id))
             object.__setattr__(
@@ -506,6 +516,21 @@ def _validate_shared_children(request: AssetSweepRequest) -> None:
                 "site configuration must be identical across candidates",
                 category="invalid_request",
             )
+        if child.config.machine_commitment != first.config.machine_commitment:
+            raise RunRequestError(
+                "machine-commitment configuration must be identical across candidates",
+                category="invalid_request",
+            )
+        if child.request_schema_version != request.asset_sweep_request_schema_version:
+            raise RunRequestError(
+                "child request schema version must match the sweep request",
+                category="invalid_request",
+            )
+        if child.artifact_schema_version != request.asset_sweep_artifact_schema_version:
+            raise RunRequestError(
+                "child artifact schema version must match the sweep request",
+                category="invalid_request",
+            )
         if any(child.config.asset == existing for existing in seen_assets):
             raise RunRequestError(
                 "candidate AssetConfig values must be unique",
@@ -569,6 +594,7 @@ def build_asset_sweep_request(
     except Exception as exc:
         raise RunRequestError(str(exc), category="data_bundle") from exc
 
+    request_version, artifact_version = preferred_case_schema_versions(base_config)
     children: dict[str, CaseRunRequest] = {}
     labels: dict[str, str] = {}
     order: list[str] = []
@@ -579,17 +605,18 @@ def build_asset_sweep_request(
                 market_case=base_config.market_case,
                 asset=candidate.asset,
                 site=base_config.site,
+                machine_commitment=base_config.machine_commitment,
             )
         except ConfigError as exc:
             raise RunRequestError(str(exc), category="invalid_request") from exc
         order.append(candidate.candidate_id)
         labels[candidate.candidate_id] = candidate.label
         children[candidate.candidate_id] = CaseRunRequest(
-            request_schema_version=CASE_RUN_REQUEST_SCHEMA_VERSION,
+            request_schema_version=request_version,
             run_id=child_run_id(run_id, candidate.candidate_id),
             created_at_utc=created_at_utc,
             software_version=__version__,
-            artifact_schema_version=RUN_ARTIFACT_SCHEMA_VERSION,
+            artifact_schema_version=artifact_version,
             data_directory=data_root,
             data_manifest_sha256=bundle.manifest_sha256,
             output_directory=output_root / "cases" / candidate.candidate_id,
@@ -597,9 +624,14 @@ def build_asset_sweep_request(
             solver_options=solver_options,
             behavioural_baseline=dict(BEHAVIOURAL_BASELINE),
         )
+    parent_version = (
+        ASSET_SWEEP_REQUEST_SCHEMA_VERSION_V2
+        if request_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2
+        else ASSET_SWEEP_REQUEST_SCHEMA_VERSION
+    )
     return AssetSweepRequest(
-        asset_sweep_request_schema_version=ASSET_SWEEP_REQUEST_SCHEMA_VERSION,
-        asset_sweep_artifact_schema_version=ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+        asset_sweep_request_schema_version=parent_version,
+        asset_sweep_artifact_schema_version=parent_version,
         run_id=run_id,
         created_at_utc=created_at_utc,
         software_version=__version__,
@@ -643,20 +675,26 @@ def serialize_asset_sweep_request(request: AssetSweepRequest) -> dict[str, objec
     }
 
 
-def _require_nested_case_schema(payload: object, candidate_id: str) -> dict:
+def _require_nested_case_schema(
+    payload: object,
+    candidate_id: str,
+    *,
+    request_version: int,
+    artifact_version: int,
+) -> dict:
     if type(payload) is not dict:
         raise RunRequestError(
             f"case_requests[{candidate_id}] must be an object",
             category="invalid_request",
         )
-    _require_schema_version(
+    require_schema_version(
         payload.get("request_schema_version"),
-        CASE_RUN_REQUEST_SCHEMA_VERSION,
+        frozenset({request_version}),
         f"case_requests[{candidate_id}].request_schema_version",
     )
-    _require_schema_version(
+    require_schema_version(
         payload.get("artifact_schema_version"),
-        RUN_ARTIFACT_SCHEMA_VERSION,
+        frozenset({artifact_version}),
         f"case_requests[{candidate_id}].artifact_schema_version",
     )
     return payload
@@ -668,6 +706,17 @@ def asset_sweep_request_from_payload(payload: object) -> AssetSweepRequest:
         raise RunRequestError("sweep request payload must be an object", category="invalid_request")
     try:
         require_keys(payload, _SWEEP_REQUEST_KEYS, "sweep request")
+        parent_request_version = require_schema_version(
+            payload["asset_sweep_request_schema_version"],
+            SUPPORTED_SWEEP_SCHEMA_VERSIONS,
+            "asset_sweep_request_schema_version",
+        )
+        parent_artifact_version = require_schema_version(
+            payload["asset_sweep_artifact_schema_version"],
+            SUPPORTED_SWEEP_SCHEMA_VERSIONS,
+            "asset_sweep_artifact_schema_version",
+        )
+        require_matching_case_schema_versions(parent_request_version, parent_artifact_version)
         order_payload = payload["candidate_order"]
         if type(order_payload) is not list:
             raise RunRequestError("candidate_order must be an array", category="invalid_request")
@@ -681,7 +730,12 @@ def asset_sweep_request_from_payload(payload: object) -> AssetSweepRequest:
             )
         children = {}
         for candidate_id in order:
-            nested = _require_nested_case_schema(cases_payload[candidate_id], candidate_id)
+            nested = _require_nested_case_schema(
+                cases_payload[candidate_id],
+                candidate_id,
+                request_version=parent_request_version,
+                artifact_version=parent_artifact_version,
+            )
             children[candidate_id] = case_run_request_from_payload(nested)
         from stepinbel.workflows.serialize import parse_utc
 
@@ -689,16 +743,8 @@ def asset_sweep_request_from_payload(payload: object) -> AssetSweepRequest:
         if type(market) is not str:
             raise RunRequestError("market must be a string", category="invalid_request")
         return AssetSweepRequest(
-            asset_sweep_request_schema_version=_require_schema_version(
-                payload["asset_sweep_request_schema_version"],
-                ASSET_SWEEP_REQUEST_SCHEMA_VERSION,
-                "asset_sweep_request_schema_version",
-            ),
-            asset_sweep_artifact_schema_version=_require_schema_version(
-                payload["asset_sweep_artifact_schema_version"],
-                ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
-                "asset_sweep_artifact_schema_version",
-            ),
+            asset_sweep_request_schema_version=parent_request_version,
+            asset_sweep_artifact_schema_version=parent_artifact_version,
             run_id=require_str(payload["run_id"], "run_id"),
             created_at_utc=parse_utc(payload["created_at_utc"], "created_at_utc"),
             software_version=require_str(payload["software_version"], "software_version"),

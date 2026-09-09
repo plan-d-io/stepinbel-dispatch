@@ -341,6 +341,45 @@ MarketCase = DayAheadCase | MFRRCase | AFRRCase
 
 
 @dataclass(frozen=True)
+class MachineCommitmentConfig:
+    """Optional physical machine-commitment assumptions.
+
+    Disabled by default. Any enabled assumption builds a MILP; with every
+    option off, the existing continuous LP is unchanged. Binary commitment
+    variables are an implementation consequence, not a separate user setting.
+    """
+
+    fixed_speed_pump: bool = False
+    turbine_minimum_output_fraction: float = 0.0
+    forbid_simultaneous_operation: bool = False
+
+    def __post_init__(self) -> None:
+        _require_bool(self.fixed_speed_pump, "fixed_speed_pump")
+        _require_bool(self.forbid_simultaneous_operation, "forbid_simultaneous_operation")
+        fraction = _require_finite(
+            self.turbine_minimum_output_fraction, "turbine_minimum_output_fraction"
+        )
+        if not 0.0 <= fraction <= 1.0:
+            raise ConfigError("turbine_minimum_output_fraction must be in [0, 1]")
+
+    def turbine_minimum_active(self) -> bool:
+        return self.turbine_minimum_output_fraction > 0.0
+
+    def physically_active(self) -> bool:
+        return (
+            self.fixed_speed_pump
+            or self.forbid_simultaneous_operation
+            or self.turbine_minimum_active()
+        )
+
+    def needs_pump_commitment(self) -> bool:
+        return self.fixed_speed_pump or self.forbid_simultaneous_operation
+
+    def needs_turbine_commitment(self) -> bool:
+        return self.turbine_minimum_active() or self.forbid_simultaneous_operation
+
+
+@dataclass(frozen=True)
 class BelgianDeliveryPeriod:
     """Inclusive Belgian delivery-date range, converted via Europe/Brussels."""
 
@@ -395,6 +434,9 @@ class SimulationConfig:
     market_case: MarketCase
     asset: AssetConfig = field(default_factory=AssetConfig)
     site: SiteConfig = field(default_factory=SiteConfig)
+    machine_commitment: MachineCommitmentConfig = field(
+        default_factory=MachineCommitmentConfig
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.period, (BelgianDeliveryPeriod, UtcPeriod)):
@@ -405,6 +447,8 @@ class SimulationConfig:
             raise ConfigError("asset must be an AssetConfig")
         if not isinstance(self.site, SiteConfig):
             raise ConfigError("site must be a SiteConfig")
+        if not isinstance(self.machine_commitment, MachineCommitmentConfig):
+            raise ConfigError("machine_commitment must be a MachineCommitmentConfig")
 
     def pv_enabled(self) -> bool:
         return self.site.pv_ac_kw > 0.0

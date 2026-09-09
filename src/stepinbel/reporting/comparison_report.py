@@ -53,6 +53,7 @@ def render_market_comparison_report(
     highest_revenue_market: str,
     resolved_start_utc,
     resolved_end_exclusive_utc,
+    mip_termination_warning: str | None = None,
 ) -> str:
     """Return a deterministic UTF-8 report for one completed comparison."""
     child = next(iter(request.case_requests.values()))
@@ -121,6 +122,15 @@ def render_market_comparison_report(
                     f"{_qty(row.simultaneous_overlap_mwh)} MWh overlap, "
                     f"{_money(row.simultaneous_interval_energy_net_eur)} EUR energy-net"
                 ),
+            ]
+        )
+    if mip_termination_warning:
+        lines.extend(
+            [
+                "",
+                "Solver termination",
+                "------------------",
+                mip_termination_warning,
             ]
         )
     if pv_enabled:

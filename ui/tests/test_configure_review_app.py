@@ -278,8 +278,18 @@ def test_advanced_section_follows_pv() -> None:
     at.run()
     headings = [item.value for item in at.subheader]
     assert headings.index("PV") < headings.index("Advanced")
-    assert "Advanced balancing assumptions" in [item.label for item in at.expander]
-    assert "Solver and diagnostics" in [item.label for item in at.expander]
+    labels = [item.label for item in at.expander]
+    assert "Machine operating constraints" not in labels
+    assert "Advanced asset assumptions" in labels
+    assert labels.index("Advanced asset assumptions") < labels.index("Advanced balancing assumptions")
+    assert labels.index("Advanced balancing assumptions") < labels.index("Solver and diagnostics")
+    source = (Path(__file__).resolve().parents[2] / "ui" / "views" / "configure.py").read_text(
+        encoding="utf-8"
+    )
+    asset_idx = source.index('with st.expander("Advanced asset assumptions"')
+    constraint_idx = source.index("st.markdown(f\"**{COMMITMENT_EXPANDER}**\")")
+    advanced_idx = source.index('render_section_heading("Advanced")')
+    assert asset_idx < constraint_idx < advanced_idx
 
 
 def test_configure_uses_narrow_safe_columns() -> None:

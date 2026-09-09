@@ -56,6 +56,21 @@ the run. Progress stays visible while the worker is active.
 
 Completed live results are stored under `outputs/<run-id>/`.
 
+## Optional machine operating constraints
+
+Ordinary configurations use a fast continuous optimization path. Under
+**Advanced asset assumptions** you can optionally require:
+
+- fixed-speed pump operation;
+- a minimum turbine output while generating;
+- no simultaneous pumping and generation.
+
+Enabling any of these settings can significantly increase calculation time.
+You can set a target optimality gap (default 1.5%) and a maximum solve time
+per market (default 15 minutes). If the time limit is reached with a
+physically valid schedule, that schedule is presented as the best available
+solution, together with the gap that was achieved.
+
 ## Installation check
 
 Run the installation check at any time with:
@@ -85,7 +100,8 @@ Further documentation:
 
 - [Scope](docs/SCOPE.md)
 - [Behavioural authority](docs/METHODOLOGY.md)
-- [Linear program](docs/MODEL.md)
+- [Optimization model](docs/MODEL.md)
+- [Optional machine operating constraints](docs/MACHINE_COMMITMENT.md)
 - [Run artifacts](docs/ARTIFACTS.md)
 - [Dedicated-market comparison](docs/COMPARISON.md)
 

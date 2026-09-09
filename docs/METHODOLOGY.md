@@ -124,6 +124,6 @@ simultaneous interval. The executable artifact is stronger evidence; HiGHS may
 return zero, one, or other economically equivalent zero-value simultaneous
 intervals. Simultaneous count and dispatch equality are not parity gates.
 
-The linear program itself is described in [MODEL.md](MODEL.md). Day-ahead, mFRR,
+The optimization model is described in [MODEL.md](MODEL.md). Day-ahead, mFRR,
 and aFRR full-year total-revenue parity use the committed reference records.
 Simultaneous pumping and turbining remain allowed and diagnostic.

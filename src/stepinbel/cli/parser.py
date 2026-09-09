@@ -55,6 +55,11 @@ CONSTRUCTION_DESTS: frozenset[str] = frozenset(
         "pv_revenue_mode",
         "pv_fixed_price_eur_mwh",
         "detailed_solver_output",
+        "fixed_speed_pump",
+        "turbine_minimum_output_fraction",
+        "forbid_simultaneous_operation",
+        "mip_rel_gap",
+        "mip_time_limit_s",
         "data_dir",
         "output_dir",
         "run_id",
@@ -191,6 +196,45 @@ def _add_solver(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         default=_SUPPRESS,
     )
+    solver.add_argument(
+        "--mip-rel-gap",
+        dest="mip_rel_gap",
+        type=float,
+        default=_SUPPRESS,
+        help="Relative MIP gap used only when a machine-commitment option is enabled. Default 0.015.",
+    )
+    solver.add_argument(
+        "--mip-time-limit-s",
+        dest="mip_time_limit_s",
+        type=float,
+        default=_SUPPRESS,
+        help="HiGHS time limit in seconds used only for MILP runs. Default 900.",
+    )
+
+
+def _add_machine_commitment(parser: argparse.ArgumentParser) -> None:
+    commitment = parser.add_argument_group("machine commitment")
+    commitment.add_argument(
+        "--fixed-speed-pump",
+        dest="fixed_speed_pump",
+        action="store_true",
+        default=_SUPPRESS,
+        help="Pump is off or at rated electrical power.",
+    )
+    commitment.add_argument(
+        "--turbine-minimum-output-fraction",
+        dest="turbine_minimum_output_fraction",
+        type=float,
+        default=_SUPPRESS,
+        help="Minimum turbine output as a fraction of rated electrical power. 0 disables.",
+    )
+    commitment.add_argument(
+        "--forbid-simultaneous-operation",
+        dest="forbid_simultaneous_operation",
+        action="store_true",
+        default=_SUPPRESS,
+        help="Forbid simultaneous pumping and generation.",
+    )
 
 
 def _add_paths(parser: argparse.ArgumentParser, *, include_request: bool) -> None:
@@ -326,6 +370,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_period(run)
     _add_asset(run, allow_storage_and_power=True)
     _add_site(run)
+    _add_machine_commitment(run)
     _add_solver(run)
     _add_run_market(run, include_market=True)
 
@@ -334,6 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_period(compare)
     _add_asset(compare, allow_storage_and_power=True)
     _add_site(compare)
+    _add_machine_commitment(compare)
     _add_solver(compare)
     compare.add_argument(
         "--markets",
@@ -352,6 +398,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_period(sweep)
     _add_asset(sweep, allow_storage_and_power=False)
     _add_site(sweep)
+    _add_machine_commitment(sweep)
     _add_solver(sweep)
     _add_run_market(sweep, include_market=True)
     axes = sweep.add_argument_group("symmetric sweep axes")

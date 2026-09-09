@@ -5,8 +5,11 @@ from stepinbel.reporting.comparison_artifacts import validate_market_comparison_
 from stepinbel.reporting.comparison_report import render_market_comparison_report
 from stepinbel.reporting.constants import (
     ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+    ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION_V2,
     MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+    MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2,
     RUN_ARTIFACT_SCHEMA_VERSION,
+    RUN_ARTIFACT_SCHEMA_VERSION_V2,
 )
 from stepinbel.reporting.io import ArtifactError
 from stepinbel.reporting.periods import build_period_summaries
@@ -16,14 +19,17 @@ from stepinbel.reporting.sweep_report import render_asset_sweep_report
 
 __all__ = [
     "RUN_ARTIFACT_SCHEMA_VERSION",
+    "RUN_ARTIFACT_SCHEMA_VERSION_V2",
     "ArtifactError",
     "build_period_summaries",
     "render_run_report",
     "validate_run_artifacts",
     "MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION",
+    "MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2",
     "render_market_comparison_report",
     "validate_market_comparison_artifacts",
     "ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION",
+    "ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION_V2",
     "render_asset_sweep_report",
     "validate_asset_sweep_artifacts",
 ]

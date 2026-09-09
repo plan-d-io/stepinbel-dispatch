@@ -1,10 +1,11 @@
-# StepInBel linear program
+# StepInBel optimization model
 
 This document is the authoritative description of the implemented continuous
-LP. It records accepted PHS behaviour (`PHS-BASELINE`) as solved by HiGHS.
-The day-ahead, mFRR, and aFRR adapters are implemented. MILP is outside
-approved scope. The model does not claim Watts.Happening conformance, unique
-dispatch, forecast skill, or investment adequacy.
+LP and the optional mixed-integer machine-commitment extension. It records
+accepted PHS behaviour (`PHS-BASELINE`) as solved by HiGHS. The day-ahead,
+mFRR, and aFRR adapters are implemented. The model does not claim
+Watts.Happening conformance, unique dispatch, forecast skill, or investment
+adequacy.
 
 Interval duration is `dt = 0.25` hours. Time index `t = 0, …, n-1`. Reservoir
 state has `n + 1` values.
@@ -14,8 +15,9 @@ state has `n + 1` values.
 - Perfect foresight over the requested window.
 - Price-taker: committed day-ahead prices are exogenous.
 - Pump and turbine efficiencies and head are fixed.
-- Machines modulate continuously. Simultaneous pumping and turbining is
-  feasible and is a diagnostic, not a constraint or tie-break.
+- Machines modulate continuously unless an optional machine-commitment
+  assumption is enabled. Simultaneous pumping and turbining is feasible in
+  the LP and is a diagnostic, not a constraint or tie-break.
 - Start-up waste is proportional to ramp-up magnitude. It is not a fixed start
   cost and introduces no binaries.
 - Pre-horizon machine power is zero: `p[-1] = 0`.
@@ -43,8 +45,8 @@ A non-negative `r_up` variable exists for a machine only when that machine's
 epsilon is positive. Without PV, `p_pump_grid` is the same solver variable as
 `p_pump`. With PV the extra non-negative variables are `p_pump_grid`,
 `pv_export`, `pv_to_pump`, and `pv_curtail`. One continuous `c_b` exists per
-supplied capacity commitment, bounded by `[0, cap_max]`. There are no integer
-or binary variables.
+supplied capacity commitment, bounded by `[0, cap_max]`. The default LP has
+no integer or binary variables.
 
 Prepared bounds without PV are `min(market bound, effective grid limit)`.
 Omitted grid limits default to the respective machine ratings. With PV, total
@@ -251,13 +253,38 @@ total_site_revenue = market_energy_net + capacity_revenue + pv_revenue
 Simultaneous pumping and turbining remain permitted and diagnostic. aFRR can
 economically favor both in the same interval because the prices differ.
 
+## Optional machine commitment
+
+Disabled by default. Public physical settings live on
+`MachineCommitmentConfig`:
+
+- `fixed_speed_pump`: off, or operating at rated electrical pump power.
+- `turbine_minimum_output_fraction`: `0` disables the floor. An enabled value
+  is resolved as `fraction * power_turbine_mw` when the model is built.
+- `forbid_simultaneous_operation`: pump and turbine commitment cannot both be
+  on in the same interval.
+
+Binary commitment variables are created only for the machines those
+assumptions need, and they are reused when several constraints share the same
+state. Existing ramp-up, ramp-down, energy-balance, reservoir, grid, PV, and
+terminal-SoC rows remain active. There is no generic LP/MILP mode switch.
+
+When every commitment option is off, the continuous LP is unchanged. Enabling
+any option builds a MILP. See [MACHINE_COMMITMENT.md](MACHINE_COMMITMENT.md).
+
 ## HiGHS
 
 HiGHS is the only production solver. Internal options are `random_seed=0`,
-`solver='choose'`, `presolve='on'`. Default output is quiet. Only an optimal
-continuous LP is accepted. Infeasible, unbounded, infeasible-or-unbounded,
-time limit, iteration limit, interrupt, model/presolve/solve error, and
-unknown statuses fail.
+`solver='choose'`, `presolve='on'`. Default output is quiet. A continuous LP
+is accepted only when HiGHS returns an optimal solution. A MILP completes
+with a physically valid feasible incumbent. If HiGHS returns `optimal`, the
+result is recorded as accepted within the configured relative MIP gap
+(default 1.5%). HiGHS status `optimal` under that tolerance means accepted
+within the gap, not a proven zero-gap optimum. A time-limited incumbent that
+passes physical and numerical checks is a completed result; it is not
+optimal and is not accepted within the requested gap. Infeasible, unbounded,
+infeasible-or-unbounded, time limit without a feasible incumbent, iteration
+limit, interrupt, model/presolve/solve error, and unknown statuses fail.
 
 ## Post-solve tolerances
 

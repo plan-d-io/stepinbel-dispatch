@@ -18,8 +18,8 @@ _VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
 
 def test_ui_version_has_a_single_file_source() -> None:
-    assert UI_VERSION_FILE.read_text(encoding="utf-8") == "0.1.0\n" or (
-        UI_VERSION_FILE.read_text(encoding="utf-8").strip() == "0.1.0"
+    assert UI_VERSION_FILE.read_text(encoding="utf-8") == "0.2.0\n" or (
+        UI_VERSION_FILE.read_text(encoding="utf-8").strip() == "0.2.0"
     )
     assert UI_VERSION == UI_VERSION_FILE.read_text(encoding="utf-8").strip()
     assert UI_VERSION == read_ui_version()

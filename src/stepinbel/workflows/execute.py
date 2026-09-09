@@ -92,7 +92,12 @@ def execute_case_run(
     )
 
     output.mkdir(parents=True)
-    journal = RunJournal(output, request.run_id, progress)
+    journal = RunJournal(
+        output,
+        request.run_id,
+        progress,
+        artifact_schema_version=request.artifact_schema_version,
+    )
     current = STAGES[0]
     result: DispatchResult | None = None
     artifacts: Mapping[str, Path] | None = None
@@ -133,7 +138,11 @@ def execute_case_run(
             elif current == "verify_artifacts":
                 journal.mark_completed_status()
                 final_event = journal.complete_stage(current, notify=False)
-                write_artifact_manifest(output, request.run_id)
+                write_artifact_manifest(
+                    output,
+                    request.run_id,
+                    artifact_schema_version=request.artifact_schema_version,
+                )
                 artifacts = validate_run_artifacts(output)
                 journal.notify(final_event)
                 continue

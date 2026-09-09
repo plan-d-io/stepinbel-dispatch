@@ -48,16 +48,19 @@ The implemented core boundary today includes:
   error; the runtime does not clip or invent a different run window.
 - Filtered PyArrow tables for the selected case only, with projected columns,
   deterministic ordering, and a complete quarter-hour UTC grid.
-- The shared continuous LP, HiGHS production backend, and the day-ahead, mFRR,
-  and aFRR adapters with optional co-located PV.
+- The shared continuous LP, optional machine-commitment MILP, HiGHS
+  production backend, and the day-ahead, mFRR, and aFRR adapters with
+  optional co-located PV.
 
-The LP is specified in [MODEL.md](MODEL.md). HiGHS is the only backend. The
-one-case workflow and its audit-artifact contract are implemented. Dedicated
-DA/mFRR/aFRR comparison is implemented as two or three independent validated
-one-case runs. Finite asset-parameter sweeps are implemented as sequential one-case
-runs under one dedicated market. Combined or co-optimized markets remain
-unbuilt. The command-line interface is implemented. Streamlit remains unbuilt.
-An Elia reference does not authorize an unreviewed change to the signed-off
+The LP and optional MILP are specified in [MODEL.md](MODEL.md). HiGHS is the
+only backend. The one-case workflow and its audit-artifact contract are
+implemented. Dedicated DA/mFRR/aFRR comparison is implemented as two or three
+independent validated one-case runs. Finite asset-parameter sweeps are
+implemented as sequential one-case runs under one dedicated market. Combined
+or co-optimized markets remain unbuilt. The command-line interface is
+implemented. The Streamlit application (`ui/app.py`) is the supported
+interactive interface. An Elia
+reference does not authorize an unreviewed change to the signed-off
 baseline.
 
 ## 4. Workflows
@@ -104,20 +107,20 @@ user interface.
 
 The command line is the implemented automation and diagnostic interface. It
 constructs the existing public request objects and calls `execute_case_run`,
-`execute_market_comparison`, and `execute_asset_sweep`. Streamlit remains the
-supported interactive interface and is not built. Direct execution requires an
-explicit `--data-dir`; published data is not shipped inside an installed wheel.
+`execute_market_comparison`, and `execute_asset_sweep`. The Streamlit
+application (`ui/app.py`) is the supported interactive interface. Direct
+execution requires an explicit `--data-dir`; published data is not shipped
+inside an installed wheel.
 
-The target Streamlit flow is:
+The Streamlit product uses three user-facing stages:
 
-1. Choose analysis.
-2. Choose period and inspect data coverage.
-3. Configure asset and site.
-4. Configure market cases, bidding assumptions, and solver options.
-5. Review the frozen request and run.
-6. Explore, compare, and download results.
+1. Configure
+2. Review & run
+3. Results
 
-The interface must label dedicated-market results as alternatives, not additive
+During an active run, stage 2 is the working/progress view. Optional machine
+operating constraints are configured under Advanced asset assumptions. The
+interface must label dedicated-market results as alternatives, not additive
 revenue streams.
 
 ## Proposed repository layout

@@ -10,6 +10,7 @@ import pytest
 from stepinbel.cli.builders import (
     build_asset,
     build_comparison_request,
+    build_machine_commitment,
     build_market_case,
     build_period,
     build_site,
@@ -26,6 +27,7 @@ from stepinbel.config import (
     AssetConfig,
     BelgianDeliveryPeriod,
     DayAheadCase,
+    MachineCommitmentConfig,
     MFRRCase,
     SiteConfig,
     UtcPeriod,
@@ -168,6 +170,27 @@ def test_solver_options_default() -> None:
 def test_solver_options_detailed() -> None:
     ns = _run_ns("--detailed-solver-output")
     assert build_solver_options(ns).detailed_output is True
+
+
+def test_machine_commitment_and_mip_flags() -> None:
+    ns = _run_ns(
+        "--fixed-speed-pump",
+        "--forbid-simultaneous-operation",
+        "--turbine-minimum-output-fraction",
+        "0.18",
+        "--mip-rel-gap",
+        "0.02",
+        "--mip-time-limit-s",
+        "45",
+    )
+    assert build_machine_commitment(ns) == MachineCommitmentConfig(
+        fixed_speed_pump=True,
+        turbine_minimum_output_fraction=0.18,
+        forbid_simultaneous_operation=True,
+    )
+    options = build_solver_options(ns)
+    assert options.mip_rel_gap == 0.02
+    assert options.time_limit_s == 45.0
 
 
 def test_da_market_case() -> None:

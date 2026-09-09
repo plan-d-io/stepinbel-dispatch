@@ -122,6 +122,12 @@ def test_default_live_form_values() -> None:
     assert form["bid_kind"] == "historical"
     assert form["bid_quantile"] == 0.50
     assert form["detailed_solver"] is False
+    assert form["fixed_speed_pump"] is False
+    assert form["turbine_minimum_enabled"] is False
+    assert form["turbine_minimum_output_pct"] == 18.0
+    assert form["forbid_simultaneous_operation"] is False
+    assert form["mip_gap_pct"] == 1.5
+    assert form["mip_time_limit_min"] == 15.0
 
 
 def test_at_least_one_market_is_required() -> None:

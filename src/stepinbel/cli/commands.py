@@ -26,6 +26,11 @@ from stepinbel.workflows import (
     load_market_comparison_request,
 )
 
+from stepinbel.optimizer import (
+    COMPARISON_MIP_TIME_LIMIT_WARNING,
+    MIP_TIME_LIMIT_FEASIBLE_WARNING,
+    TERMINATION_TIME_LIMIT_FEASIBLE,
+)
 from stepinbel.cli.builders import (
     build_case_request,
     build_comparison_request,
@@ -40,6 +45,7 @@ from stepinbel.cli.output import (
     emit_progress,
     status_payload,
     write_success,
+    write_warning,
 )
 from stepinbel.cli.signals import run_with_cancellation
 
@@ -65,7 +71,7 @@ def _format_utc(value: datetime) -> str:
 
 
 def success_run(result: CaseRun) -> dict[str, Any]:
-    return {
+    payload = {
         "ok": True,
         "kind": "run",
         "run_id": result.request.run_id,
@@ -81,10 +87,60 @@ def success_run(result: CaseRun) -> dict[str, Any]:
         "solver_name": result.result.solver.solver_name,
         "solver_version": result.result.solver.solver_version,
     }
+    payload.update(_formulation_payload(result.request.config.machine_commitment.physically_active(), result.result.solver))
+    warning = _run_warning(result)
+    if warning is not None:
+        payload["warning"] = warning
+    return payload
+
+
+def _formulation_payload(active: bool, solver) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "formulation": "milp" if active else "lp",
+        "continuous_lp": bool(solver.continuous_lp),
+    }
+    if not active:
+        return payload
+    diagnostics = dict(solver.diagnostics)
+    requested = diagnostics.get("requested_mip_gap")
+    achieved = diagnostics.get("achieved_mip_gap", diagnostics.get("mip_gap"))
+    payload["termination"] = diagnostics.get("termination")
+    payload["requested_mip_gap"] = None if requested is None else float(requested)
+    payload["achieved_mip_gap"] = None if achieved is None else float(achieved)
+    return payload
+
+
+def _solver_termination(solver) -> object:
+    return dict(solver.diagnostics).get("termination")
+
+
+def _run_warning(result: CaseRun) -> str | None:
+    if not result.request.config.machine_commitment.physically_active():
+        return None
+    if _solver_termination(result.result.solver) == TERMINATION_TIME_LIMIT_FEASIBLE:
+        return MIP_TIME_LIMIT_FEASIBLE_WARNING
+    return None
+
+
+def _comparison_warning(case_runs: Mapping[str, CaseRun]) -> str | None:
+    for run in case_runs.values():
+        if not run.request.config.machine_commitment.physically_active():
+            continue
+        if _solver_termination(run.result.solver) == TERMINATION_TIME_LIMIT_FEASIBLE:
+            return COMPARISON_MIP_TIME_LIMIT_WARNING
+    return None
+
+
+def _write_completed(payload: Mapping[str, Any]) -> int:
+    warning = payload.get("warning")
+    if type(warning) is str and warning:
+        write_warning(warning)
+    return write_success(payload)
 
 
 def success_comparison(result: MarketComparisonRun) -> dict[str, Any]:
-    return {
+    first = next(iter(result.case_runs.values()))
+    payload = {
         "ok": True,
         "kind": "comparison",
         "run_id": result.request.run_id,
@@ -94,10 +150,21 @@ def success_comparison(result: MarketComparisonRun) -> dict[str, Any]:
         "highest_revenue_market": result.highest_revenue_market,
         "case_count": len(result.case_runs),
     }
+    payload.update(
+        _formulation_payload(
+            first.request.config.machine_commitment.physically_active(),
+            first.result.solver,
+        )
+    )
+    warning = _comparison_warning(result.case_runs)
+    if warning is not None:
+        payload["warning"] = warning
+    return payload
 
 
 def success_sweep(result: AssetSweepRun) -> dict[str, Any]:
-    return {
+    first = next(iter(result.case_runs.values()))
+    payload = {
         "ok": True,
         "kind": "sweep",
         "run_id": result.request.run_id,
@@ -108,6 +175,16 @@ def success_sweep(result: AssetSweepRun) -> dict[str, Any]:
         "highest_revenue_candidate_id": result.highest_revenue_candidate_id,
         "candidate_count": len(result.request.candidate_order),
     }
+    payload.update(
+        _formulation_payload(
+            first.request.config.machine_commitment.physically_active(),
+            first.result.solver,
+        )
+    )
+    warning = _comparison_warning(result.case_runs)
+    if warning is not None:
+        payload["warning"] = warning
+    return payload
 
 
 def _command_run(namespace: argparse.Namespace) -> int:
@@ -120,7 +197,7 @@ def _command_run(namespace: argparse.Namespace) -> int:
 
     def body(cancel_requested: Callable[[], bool]) -> int:
         result = execute_case_run(request, progress=_progress(quiet), cancel_requested=cancel_requested)
-        return write_success(success_run(result))
+        return _write_completed(success_run(result))
 
     return run_with_cancellation(body)
 
@@ -135,7 +212,7 @@ def _command_compare(namespace: argparse.Namespace) -> int:
 
     def body(cancel_requested: Callable[[], bool]) -> int:
         result = execute_market_comparison(request, progress=_progress(quiet), cancel_requested=cancel_requested)
-        return write_success(success_comparison(result))
+        return _write_completed(success_comparison(result))
 
     return run_with_cancellation(body)
 
@@ -150,7 +227,7 @@ def _command_sweep(namespace: argparse.Namespace) -> int:
 
     def body(cancel_requested: Callable[[], bool]) -> int:
         result = execute_asset_sweep(request, progress=_progress(quiet), cancel_requested=cancel_requested)
-        return write_success(success_sweep(result))
+        return _write_completed(success_sweep(result))
 
     return run_with_cancellation(body)
 

@@ -12,6 +12,11 @@ from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 from stepinbel.reporting.comparison_report import render_market_comparison_report
+from stepinbel.optimizer.types import (
+    COMPARISON_MIP_TIME_LIMIT_WARNING,
+    TERMINATION_TIME_LIMIT_FEASIBLE,
+    USABLE_MILP_TERMINATIONS,
+)
 from stepinbel.reporting.constants import (
     COMPARISON_INTERPRETATION,
     COMPARISON_MARKETS,
@@ -21,7 +26,7 @@ from stepinbel.reporting.constants import (
     COMPARISON_TOP_LEVEL_FILES,
     MANIFEST_EXCLUDED,
     MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
-    RUN_ARTIFACT_SCHEMA_VERSION,
+    MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2,
 )
 from stepinbel.reporting.io import (
     ArtifactError,
@@ -51,6 +56,9 @@ COMPARISON_METADATA_KEYS: tuple[str, ...] = (
     "dedicated_alternatives_statement",
     "children",
 )
+COMPARISON_METADATA_KEYS_V2: tuple[str, ...] = COMPARISON_METADATA_KEYS + (
+    "mip_termination_warning",
+)
 COMPARISON_CHILD_METADATA_KEYS: tuple[str, ...] = (
     "run_id",
     "relative_directory",
@@ -58,6 +66,11 @@ COMPARISON_CHILD_METADATA_KEYS: tuple[str, ...] = (
     "artifact_schema_version",
     "artifact_manifest_byte_size",
     "artifact_manifest_sha256",
+)
+COMPARISON_CHILD_METADATA_KEYS_V2: tuple[str, ...] = COMPARISON_CHILD_METADATA_KEYS + (
+    "termination",
+    "requested_mip_gap",
+    "achieved_mip_gap",
 )
 COMPARISON_MANIFEST_KEYS: tuple[str, ...] = (
     "comparison_artifact_schema_version",
@@ -76,8 +89,6 @@ from stepinbel.workflows.comparison_request import (
 )
 from stepinbel.workflows.constants import (
     BEHAVIOURAL_BASELINE,
-    COMPARISON_STAGES,
-    MARKET_COMPARISON_REQUEST_SCHEMA_VERSION,
     RUN_EVENT_SCHEMA_VERSION,
     RUN_STATUS_SCHEMA_VERSION,
 )
@@ -223,9 +234,13 @@ def _selected_from_request_file(run_dir: Path) -> tuple[str, ...]:
 
 
 def write_comparison_artifact_manifest(run_dir: Path, run_id: str) -> dict[str, object]:
+    request_payload = _read_json(run_dir / "comparison_request.json")
+    schema_version = request_payload.get(
+        "comparison_artifact_schema_version", MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION
+    )
     entries = [_posix_entry(run_dir, name) for name in comparison_manifest_entries(_selected_from_request_file(run_dir))]
     payload = {
-        "comparison_artifact_schema_version": MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+        "comparison_artifact_schema_version": schema_version,
         "run_id": run_id,
         "entries": entries,
     }
@@ -254,6 +269,33 @@ def ranked_rows_from_case_runs(
     return comparison_rows_from_child_summaries(summaries, ids)
 
 
+def _is_comparison_v2(request: MarketComparisonRequest) -> bool:
+    return request.comparison_artifact_schema_version == MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2
+
+
+def _mip_fields_from_diagnostics(diagnostics: Mapping[str, Any]) -> dict[str, object]:
+    requested = diagnostics.get("requested_mip_gap")
+    achieved = diagnostics.get("achieved_mip_gap", diagnostics.get("mip_gap"))
+    return {
+        "termination": diagnostics.get("termination"),
+        "requested_mip_gap": None if requested is None else float(requested),
+        "achieved_mip_gap": None if achieved is None else float(achieved),
+    }
+
+
+def _mip_warning_from_terminations(terminations: Sequence[object]) -> str | None:
+    if any(item == TERMINATION_TIME_LIMIT_FEASIBLE for item in terminations):
+        return COMPARISON_MIP_TIME_LIMIT_WARNING
+    return None
+
+
+def _mip_warning_from_case_runs(case_runs: Mapping[str, CaseRun]) -> str | None:
+    terminations = [
+        dict(run.result.solver.diagnostics).get("termination") for run in case_runs.values()
+    ]
+    return _mip_warning_from_terminations(terminations)
+
+
 def write_comparison_artifacts(
     run_dir: Path,
     request: MarketComparisonRequest,
@@ -264,7 +306,7 @@ def write_comparison_artifacts(
     start, end = next(iter(request.case_requests.values())).config.period.to_utc_bounds()
     first_row = rows[0]
     summary = {
-        "comparison_artifact_schema_version": MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+        "comparison_artifact_schema_version": request.comparison_artifact_schema_version,
         "run_id": request.run_id,
         "state": "completed",
         "resolved_start_utc": format_utc(start),
@@ -283,19 +325,24 @@ def write_comparison_artifacts(
     )
     selected = tuple(request.case_requests)
     children: dict[str, object] = {}
+    is_v2 = _is_comparison_v2(request)
+    warning = _mip_warning_from_case_runs(case_runs) if is_v2 else None
     for market in selected:
         manifest = case_runs[market].directory / MANIFEST_EXCLUDED
-        children[market] = {
+        record: dict[str, object] = {
             "run_id": case_runs[market].request.run_id,
             "relative_directory": f"cases/{market}",
             "market": market,
-            "artifact_schema_version": RUN_ARTIFACT_SCHEMA_VERSION,
+            "artifact_schema_version": case_runs[market].request.artifact_schema_version,
             "artifact_manifest_byte_size": manifest.stat().st_size,
             "artifact_manifest_sha256": sha256_file(manifest),
         }
+        if is_v2:
+            record.update(_mip_fields_from_diagnostics(case_runs[market].result.solver.diagnostics))
+        children[market] = record
     metadata = {
-        "comparison_request_schema_version": MARKET_COMPARISON_REQUEST_SCHEMA_VERSION,
-        "comparison_artifact_schema_version": MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+        "comparison_request_schema_version": request.comparison_request_schema_version,
+        "comparison_artifact_schema_version": request.comparison_artifact_schema_version,
         "status_schema_version": RUN_STATUS_SCHEMA_VERSION,
         "event_schema_version": RUN_EVENT_SCHEMA_VERSION,
         "run_id": request.run_id,
@@ -311,6 +358,8 @@ def write_comparison_artifacts(
         "dedicated_alternatives_statement": COMPARISON_INTERPRETATION,
         "children": children,
     }
+    if is_v2:
+        metadata["mip_termination_warning"] = warning
     atomic_write_json(run_dir / "comparison_metadata.json", metadata)
     atomic_write_text(
         run_dir / "report.txt",
@@ -320,6 +369,7 @@ def write_comparison_artifacts(
             highest_revenue_market=highest_revenue_market,
             resolved_start_utc=start,
             resolved_end_exclusive_utc=end,
+            mip_termination_warning=warning,
         ),
     )
 
@@ -469,7 +519,7 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
     if status.get("status_schema_version") != RUN_STATUS_SCHEMA_VERSION:
         raise ArtifactError("run_status.json schema version is wrong")
     if status.get("comparison_artifact_schema_version", status.get("artifact_schema_version")) != (
-        MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION
+        request.comparison_artifact_schema_version
     ):
         raise ArtifactError("run_status.json artifact schema version is wrong")
     if status.get("run_id") != request.run_id:
@@ -483,7 +533,7 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
         raise ArtifactError("artifact_manifest.json run_id does not match")
     _require_typed_int(
         manifest.get("comparison_artifact_schema_version"),
-        MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+        request.comparison_artifact_schema_version,
         "artifact_manifest.json schema version",
     )
     entries = manifest.get("entries")
@@ -555,7 +605,7 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
     if set(summary) != set(COMPARISON_SUMMARY_KEYS):
         raise ArtifactError("comparison_summary.json keys are wrong")
     expected_summary = {
-        "comparison_artifact_schema_version": MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+        "comparison_artifact_schema_version": request.comparison_artifact_schema_version,
         "run_id": request.run_id,
         "state": "completed",
         "resolved_start_utc": format_utc(start),
@@ -570,15 +620,18 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
     _validate_csv_rows(directory / "comparison_summary.csv", rows)
 
     metadata = _read_json(directory / "comparison_metadata.json")
-    _require_exact_keys(metadata, COMPARISON_METADATA_KEYS, "comparison_metadata.json")
+    is_v2 = _is_comparison_v2(request)
+    metadata_keys = COMPARISON_METADATA_KEYS_V2 if is_v2 else COMPARISON_METADATA_KEYS
+    child_keys = COMPARISON_CHILD_METADATA_KEYS_V2 if is_v2 else COMPARISON_CHILD_METADATA_KEYS
+    _require_exact_keys(metadata, metadata_keys, "comparison_metadata.json")
     _require_typed_int(
         metadata.get("comparison_request_schema_version"),
-        MARKET_COMPARISON_REQUEST_SCHEMA_VERSION,
+        request.comparison_request_schema_version,
         "comparison_metadata.json request schema version",
     )
     _require_typed_int(
         metadata.get("comparison_artifact_schema_version"),
-        MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+        request.comparison_artifact_schema_version,
         "comparison_metadata.json artifact schema version",
     )
     _require_typed_int(
@@ -630,29 +683,39 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
     children = metadata.get("children")
     if type(children) is not dict or set(children) != set(selected):
         raise ArtifactError("comparison_metadata.json children are incomplete")
+    child_terminations: list[object] = []
     for market in selected:
         record = children[market]
         if type(record) is not dict:
             raise ArtifactError(f"comparison_metadata.json children[{market}] is invalid")
         _require_exact_keys(
             record,
-            COMPARISON_CHILD_METADATA_KEYS,
+            child_keys,
             f"comparison_metadata.json children[{market}]",
         )
         manifest_path = directory / "cases" / market / MANIFEST_EXCLUDED
         digest = sha256_file(manifest_path)
         size = manifest_path.stat().st_size
-        expected_child = {
+        expected_child: dict[str, object] = {
             "run_id": child_ids[market],
             "relative_directory": f"cases/{market}",
             "market": market,
-            "artifact_schema_version": RUN_ARTIFACT_SCHEMA_VERSION,
+            "artifact_schema_version": request.case_requests[market].artifact_schema_version,
             "artifact_manifest_byte_size": size,
             "artifact_manifest_sha256": digest,
         }
+        if is_v2:
+            child_solver = _read_json(directory / "cases" / market / "run_metadata.json").get("solver")
+            if not isinstance(child_solver, dict):
+                raise ArtifactError(f"cases/{market}/run_metadata.json solver is missing")
+            termination = child_solver.get("termination")
+            if termination not in USABLE_MILP_TERMINATIONS:
+                raise ArtifactError(f"cases/{market} termination is not a usable MILP result")
+            child_terminations.append(termination)
+            expected_child.update(_mip_fields_from_diagnostics(child_solver))
         _require_typed_int(
             record["artifact_schema_version"],
-            RUN_ARTIFACT_SCHEMA_VERSION,
+            request.case_requests[market].artifact_schema_version,
             f"comparison_metadata.json children[{market}] schema version",
         )
         size_value = _require_non_negative_int(
@@ -673,12 +736,17 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
             f"comparison_metadata.json children[{market}]",
         )
 
+    expected_warning = _mip_warning_from_terminations(child_terminations) if is_v2 else None
+    if is_v2 and metadata.get("mip_termination_warning") != expected_warning:
+        raise ArtifactError("comparison_metadata.json mip_termination_warning is wrong")
+
     expected_report = render_market_comparison_report(
         request,
         rows,
         highest_revenue_market=highest,
         resolved_start_utc=start,
         resolved_end_exclusive_utc=end,
+        mip_termination_warning=expected_warning,
     )
     try:
         actual_report = (directory / "report.txt").read_text(encoding="utf-8")

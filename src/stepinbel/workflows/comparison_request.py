@@ -21,18 +21,25 @@ from stepinbel.reporting.constants import (
 from stepinbel.workflows.constants import (
     BEHAVIOURAL_BASELINE,
     CASE_RUN_REQUEST_SCHEMA_VERSION,
+    CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
     MARKET_COMPARISON_REQUEST_SCHEMA_VERSION,
+    MARKET_COMPARISON_REQUEST_SCHEMA_VERSION_V2,
     RUN_ARTIFACT_SCHEMA_VERSION,
+    SUPPORTED_CASE_SCHEMA_VERSIONS,
+    SUPPORTED_COMPARISON_SCHEMA_VERSIONS,
 )
 from stepinbel.workflows.errors import RunRequestError
 from stepinbel.workflows.request import CaseRunRequest, case_run_request_from_payload
 from stepinbel.workflows.serialize import (
     dumps_json,
     loads_json,
+    preferred_case_schema_versions,
     request_to_payload,
     require_absolute_path,
     require_keys,
     require_mapping,
+    require_matching_case_schema_versions,
+    require_schema_version,
     require_sha256,
     require_str,
     require_utc_seconds,
@@ -42,26 +49,26 @@ from stepinbel.workflows.serialize import (
 )
 
 
-def _require_schema_version(value: object, expected: int, field: str) -> int:
-    if type(value) is not int or value != expected:
-        raise RunRequestError(f"{field} is not supported", category="invalid_request")
-    return value
-
-
-def _require_nested_case_schema(payload: object, market: str) -> dict:
+def _require_nested_case_schema(
+    payload: object,
+    market: str,
+    *,
+    request_version: int,
+    artifact_version: int,
+) -> dict:
     if not isinstance(payload, dict):
         raise RunRequestError(
             f"case_requests[{market}] must be an object",
             category="invalid_request",
         )
-    _require_schema_version(
+    require_schema_version(
         payload.get("request_schema_version"),
-        CASE_RUN_REQUEST_SCHEMA_VERSION,
+        frozenset({request_version}),
         f"case_requests[{market}].request_schema_version",
     )
-    _require_schema_version(
+    require_schema_version(
         payload.get("artifact_schema_version"),
-        RUN_ARTIFACT_SCHEMA_VERSION,
+        frozenset({artifact_version}),
         f"case_requests[{market}].artifact_schema_version",
     )
     return payload
@@ -159,15 +166,19 @@ class MarketComparisonRequest:
 
     def __post_init__(self) -> None:
         try:
-            _require_schema_version(
+            require_schema_version(
                 self.comparison_request_schema_version,
-                MARKET_COMPARISON_REQUEST_SCHEMA_VERSION,
+                SUPPORTED_COMPARISON_SCHEMA_VERSIONS,
                 "comparison_request_schema_version",
             )
-            _require_schema_version(
+            require_schema_version(
                 self.comparison_artifact_schema_version,
-                MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+                SUPPORTED_COMPARISON_SCHEMA_VERSIONS,
                 "comparison_artifact_schema_version",
+            )
+            require_matching_case_schema_versions(
+                self.comparison_request_schema_version,
+                self.comparison_artifact_schema_version,
             )
             run_id = validate_run_id(self.run_id)
             object.__setattr__(self, "run_id", run_id)
@@ -282,6 +293,21 @@ def _validate_shared_children(request: MarketComparisonRequest) -> None:
                 "site configuration must be identical across markets",
                 category="invalid_request",
             )
+        if child.config.machine_commitment != first.config.machine_commitment:
+            raise RunRequestError(
+                "machine-commitment configuration must be identical across markets",
+                category="invalid_request",
+            )
+        if child.request_schema_version != request.comparison_request_schema_version:
+            raise RunRequestError(
+                "child request schema version must match the comparison request",
+                category="invalid_request",
+            )
+        if child.artifact_schema_version != request.comparison_artifact_schema_version:
+            raise RunRequestError(
+                "child artifact schema version must match the comparison request",
+                category="invalid_request",
+            )
 
 
 def build_market_comparison_request(
@@ -329,6 +355,11 @@ def build_market_comparison_request(
                     "site configuration must be identical across markets",
                     category="invalid_request",
                 )
+            if config.machine_commitment != first.machine_commitment:
+                raise RunRequestError(
+                    "machine-commitment configuration must be identical across markets",
+                    category="invalid_request",
+                )
         if solver_options is None:
             solver_options = SolverOptions()
         elif type(solver_options) is not SolverOptions:
@@ -370,13 +401,20 @@ def build_market_comparison_request(
         raise RunRequestError(str(exc), category="data_bundle") from exc
 
     children: dict[str, CaseRunRequest] = {}
+    request_version, artifact_version = preferred_case_schema_versions(next(iter(configs.values())))
     for market in configs:
+        child_versions = preferred_case_schema_versions(configs[market])
+        if child_versions != (request_version, artifact_version):
+            raise RunRequestError(
+                "machine-commitment schema versions must be identical across markets",
+                category="invalid_request",
+            )
         children[market] = CaseRunRequest(
-            request_schema_version=CASE_RUN_REQUEST_SCHEMA_VERSION,
+            request_schema_version=request_version,
             run_id=child_run_id(run_id, market),
             created_at_utc=created_at_utc,
             software_version=__version__,
-            artifact_schema_version=RUN_ARTIFACT_SCHEMA_VERSION,
+            artifact_schema_version=artifact_version,
             data_directory=data_root,
             data_manifest_sha256=bundle.manifest_sha256,
             output_directory=output_root / "cases" / market,
@@ -384,9 +422,15 @@ def build_market_comparison_request(
             solver_options=solver_options,
             behavioural_baseline=dict(BEHAVIOURAL_BASELINE),
         )
+    parent_request_version = (
+        MARKET_COMPARISON_REQUEST_SCHEMA_VERSION_V2
+        if request_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2
+        else MARKET_COMPARISON_REQUEST_SCHEMA_VERSION
+    )
+    parent_artifact_version = parent_request_version
     return MarketComparisonRequest(
-        comparison_request_schema_version=MARKET_COMPARISON_REQUEST_SCHEMA_VERSION,
-        comparison_artifact_schema_version=MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+        comparison_request_schema_version=parent_request_version,
+        comparison_artifact_schema_version=parent_artifact_version,
         run_id=run_id,
         created_at_utc=created_at_utc,
         software_version=__version__,
@@ -444,25 +488,33 @@ def market_comparison_request_from_payload(payload: object) -> MarketComparisonR
         raise RunRequestError("comparison request payload must be an object", category="invalid_request")
     try:
         require_keys(payload, _COMPARISON_REQUEST_KEYS, "comparison request")
+        parent_request_version = require_schema_version(
+            payload["comparison_request_schema_version"],
+            SUPPORTED_COMPARISON_SCHEMA_VERSIONS,
+            "comparison_request_schema_version",
+        )
+        parent_artifact_version = require_schema_version(
+            payload["comparison_artifact_schema_version"],
+            SUPPORTED_COMPARISON_SCHEMA_VERSIONS,
+            "comparison_artifact_schema_version",
+        )
+        require_matching_case_schema_versions(parent_request_version, parent_artifact_version)
         cases_payload = require_mapping(payload["case_requests"], "case_requests")
         selected = canonical_comparison_markets(cases_payload, field="case_requests")
         children = {}
         for market in selected:
-            nested = _require_nested_case_schema(cases_payload[market], market)
+            nested = _require_nested_case_schema(
+                cases_payload[market],
+                market,
+                request_version=parent_request_version,
+                artifact_version=parent_artifact_version,
+            )
             children[market] = case_run_request_from_payload(nested)
         from stepinbel.workflows.serialize import parse_utc
 
         return MarketComparisonRequest(
-            comparison_request_schema_version=_require_schema_version(
-                payload["comparison_request_schema_version"],
-                MARKET_COMPARISON_REQUEST_SCHEMA_VERSION,
-                "comparison_request_schema_version",
-            ),
-            comparison_artifact_schema_version=_require_schema_version(
-                payload["comparison_artifact_schema_version"],
-                MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
-                "comparison_artifact_schema_version",
-            ),
+            comparison_request_schema_version=parent_request_version,
+            comparison_artifact_schema_version=parent_artifact_version,
             run_id=require_str(payload["run_id"], "run_id"),
             created_at_utc=parse_utc(payload["created_at_utc"], "created_at_utc"),
             software_version=require_str(payload["software_version"], "software_version"),

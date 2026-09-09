@@ -52,6 +52,7 @@ CONSOLE_MAX_LINES = 80
 
 CASE_ARTIFACT_SCHEMA = 1
 COMPARISON_ARTIFACT_SCHEMA = 1
+SUPPORTED_ARTIFACT_SCHEMAS = frozenset({1, 2})
 
 STAGE_LABELS = {
     "validate_request": "Validating request",
@@ -122,8 +123,8 @@ def trusted_status(job: Mapping[str, Any], payload: Mapping[str, Any] | None) ->
     state = payload.get("state")
     if state not in CORE_SUPPORTED:
         return None
-    expected = expected_artifact_schema(str(job.get("kind") or ""))
-    if not is_exact_int(payload.get("artifact_schema_version"), expected):
+    version = payload.get("artifact_schema_version")
+    if type(version) is not int or version not in SUPPORTED_ARTIFACT_SCHEMAS:
         return None
     current = payload.get("current_stage")
     if current is not None and not isinstance(current, str):
@@ -367,10 +368,17 @@ def format_elapsed(seconds: float | int | None) -> str:
     return f"{minutes:d}:{secs:02d}"
 
 
+POST_SOLVE_USER_MESSAGE = (
+    "The simulation finished, but the result did not pass the physical validation checks."
+)
+
+
 def safe_error_message(text: Any) -> str:
     raw = str(text or "").strip()
     if not raw:
         return "The simulation failed."
+    if "post-solve feasibility" in raw.lower():
+        return POST_SOLVE_USER_MESSAGE
     if "Traceback" in raw or "\n" in raw:
         return "The simulation failed."
     if "\\" in raw or raw.startswith("/") or ":/" in raw:

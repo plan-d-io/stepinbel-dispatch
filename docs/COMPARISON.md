@@ -37,14 +37,18 @@ run = execute_market_comparison(request)
 
 Schema versions:
 
-- `MARKET_COMPARISON_REQUEST_SCHEMA_VERSION = 1`
-- `MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION = 1`
+- `MARKET_COMPARISON_REQUEST_SCHEMA_VERSION = 1` for ordinary LP comparisons.
+  Version `2` is used when a child case enables machine commitment.
+- `MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION = 1` or `2`, matching the request.
 
 `validate_market_comparison_artifacts` independently reconstructs ranking from
 the selected child `summary.json` files and the frozen comparison request. The
-selected markets are the canonical keys of `case_requests`. Schema versions
-remain 1. It does not reopen the published data directory. A completed
-comparison directory may be relocated.
+selected markets are the canonical keys of `case_requests`. Child schema
+versions must match the parent. It does not reopen the published data
+directory. A completed comparison directory may be relocated. Schema-v2
+comparisons preserve each child's termination and MIP gap and record
+`mip_termination_warning` when one or more children reached the time limit
+outside the requested gap.
 
 ## Output tree
 
@@ -110,5 +114,7 @@ are diagnostic material.
 When day-ahead is selected, the report states that it has no applicable Elia
 conformance reference. Child metadata remains authoritative for each selected
 market’s methodology reference. Those documents are not exact
-Watts.Happening-conformance claims. Combined markets, MILP, and FCR remain
-outside scope. Streamlit remains unbuilt.
+Watts.Happening-conformance claims. Combined markets and FCR remain outside
+scope. Optional machine commitment, when enabled, is applied identically to
+every dedicated-market child. The Streamlit application presents the same
+public workflows.

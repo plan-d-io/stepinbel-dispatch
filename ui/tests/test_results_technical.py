@@ -37,6 +37,7 @@ from ui.services.result_technical import (
     TechnicalError,
     format_residual,
     load_technical_details,
+    order_structured_run_log,
 )
 from ui.services.snapshot import build_snapshot
 from ui.tests.result_artifact_fixtures import (
@@ -74,6 +75,16 @@ def _one_market_da(tmp_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
 
 def _two_market_live(tmp_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     return genuine_two_market_live(tmp_path)
+
+
+def test_structured_run_log_is_newest_first() -> None:
+    rows = [
+        {"timestamp": "2025-01-15T00:00:00Z", "sequence": 1, "message": "first"},
+        {"timestamp": "2025-01-15T00:00:00Z", "sequence": 2, "message": "second-same-time"},
+        {"timestamp": "2025-01-15T00:00:01Z", "sequence": 3, "message": "later"},
+    ]
+    ordered = order_structured_run_log(rows)
+    assert [int(item["sequence"]) for item in ordered] == [3, 2, 1]
 
 
 def test_residual_formatting_keeps_nonzero_visible() -> None:
@@ -118,6 +129,13 @@ def test_demo_technical_values_from_artifacts() -> None:
     assert tables["da_prices_qh"]["Rows"] == "403,964"
     assert payload["parent_events"]["total"] == 14
     assert payload["child_events"]["total"] >= 1
+    parent_rows = payload["parent_events"]["rows"]
+    parent_keys = [(row["timestamp"], int(row["sequence"])) for row in parent_rows]
+    assert parent_keys == sorted(parent_keys, reverse=True)
+    assert int(parent_rows[0]["sequence"]) == 14
+    child_rows = payload["child_events"]["rows"]
+    child_keys = [(row["timestamp"], int(row["sequence"])) for row in child_rows]
+    assert child_keys == sorted(child_keys, reverse=True)
     assert payload["parent_report"]["truncated"] is False
     groups = {title: dict(rows) for title, rows in payload["configured_groups"]}
     assert set(groups) == {"Period", "Asset", "Site", "Market"}

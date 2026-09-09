@@ -16,6 +16,7 @@ from ui.presentation.components import (
 )
 from ui.services.jobs import trusted_job_or_none
 from ui.services.launch import TEST_HOOKS
+from ui.services.commitment import WORKING_COMMITMENT_NOTICE, snapshot_machine_commitment_enabled
 from ui.services.snapshot import market_labels
 from ui.services.status import (
     CLASS_QUEUED,
@@ -78,6 +79,8 @@ def render_working(state: dict[str, Any], klass: str) -> None:
         body = "The worker is in progress."
     render_page_header("Stage 2 of 3", "Review & run", "Simulation run in progress.")
     render_status_panel("warning", label, body)
+    if snapshot_machine_commitment_enabled(snapshot if isinstance(snapshot, Mapping) else {}):
+        st.caption(WORKING_COMMITMENT_NOTICE)
     render_status_summary(
         (
             ("State", label),

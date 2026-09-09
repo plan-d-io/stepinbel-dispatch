@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from stepinbel.config import AFRRCase, BelgianDeliveryPeriod, MFRRCase, UtcPeriod
 from stepinbel.optimizer import DispatchResult
+from stepinbel.optimizer.types import (
+    TERMINATION_ACCEPTED_WITHIN_GAP,
+    TERMINATION_TIME_LIMIT_FEASIBLE,
+)
 from stepinbel.workflows.constants import BEHAVIOURAL_BASELINE, ELIA_METHODOLOGY
 from stepinbel.workflows.request import CaseRunRequest
 from stepinbel.workflows.serialize import format_utc, serialize_period
@@ -143,11 +147,69 @@ def render_run_report(
             f"Overlap energy: {_qty(summary.simultaneous_overlap_mwh)} MWh",
             f"Simultaneous-interval energy-net revenue: {_money(simultaneous_interval_energy_net_eur)} EUR",
             "Simultaneous-interval revenue is diagnostic and is not incremental value attributable to simultaneous operation.",
+        ]
+    )
+    commitment = request.config.machine_commitment
+    if commitment.physically_active():
+        rated_turbine = float(asset.power_turbine_mw)
+        floor_mw = commitment.turbine_minimum_output_fraction * rated_turbine
+        lines.extend(
+            [
+                "",
+                "Machine commitment",
+                "------------------",
+                f"Formulation: mixed-integer (MILP)",
+                f"Fixed-speed pump: {'enabled' if commitment.fixed_speed_pump else 'disabled'}",
+                (
+                    f"Turbine minimum output: {commitment.turbine_minimum_output_fraction:.4g} of "
+                    f"rated electrical power ({_qty(floor_mw)} MW)"
+                    if commitment.turbine_minimum_active()
+                    else "Turbine minimum output: disabled"
+                ),
+                f"Strict mutual exclusion: {'enabled' if commitment.forbid_simultaneous_operation else 'disabled'}",
+            ]
+        )
+    lines.extend(
+        [
             "",
             "Solver and feasibility",
             "----------------------",
             f"Solver: {result.solver.solver_name} {result.solver.solver_version}",
             f"Status: {result.solver.status}",
+        ]
+    )
+    if commitment.physically_active():
+        diagnostics = result.solver.diagnostics
+        achieved = diagnostics.get("achieved_mip_gap", diagnostics.get("mip_gap"))
+        bound = diagnostics.get("best_bound", diagnostics.get("mip_dual_bound"))
+        incumbent = diagnostics.get("incumbent_objective", summary.total_site_revenue_eur)
+        termination = diagnostics.get("termination", TERMINATION_ACCEPTED_WITHIN_GAP)
+        if termination == TERMINATION_TIME_LIMIT_FEASIBLE:
+            lines.extend(
+                [
+                    "Requested MIP gap was not reached.",
+                    "This completed result is the best available feasible incumbent at the time limit.",
+                    "It is not optimal and is not accepted within the requested MIP gap.",
+                ]
+            )
+        else:
+            lines.append(
+                "HiGHS status 'optimal' under a configured MIP gap means accepted within that tolerance, not a proven zero-gap optimum."
+            )
+        lines.extend(
+            [
+                f"Termination: {termination}",
+                f"Requested MIP relative gap: {request.solver_options.mip_rel_gap:g}",
+                f"Achieved MIP relative gap: {achieved}",
+                f"Incumbent objective: {incumbent}",
+                f"Best bound: {bound}",
+                f"Time limit: {request.solver_options.time_limit_s:g} s",
+                f"Integer variables: {result.solver.num_integer}",
+                f"Binary variables: {result.solver.num_binary}",
+            ]
+        )
+    lines.extend(
+        [
             f"Feasibility ok: {result.feasibility.ok}",
             f"Columns / rows / nonzeros: {result.solver.num_col} / {result.solver.num_row} / {result.solver.num_nz}",
             "",

@@ -68,10 +68,10 @@ The target model covers:
 - Optional co-located PV behind the same grid connection.
 - Explicit grid-import and grid-export limits.
 
-The initial port must reproduce the accepted continuous linear-program baseline.
-The old PHS Phase D proposal for fixed-speed and minimum-stable-power machine
-commitment is closed without implementation and is not in the approved
-StepInBel scope. It may return only through a new product decision.
+The initial port must reproduce the accepted continuous optimization baseline.
+Optional fixed-speed pump operation, minimum turbine output, and prevention of
+simultaneous pumping and generation are product settings. They are off by
+default. See [MACHINE_COMMITMENT.md](MACHINE_COMMITMENT.md).
 
 ## Data boundary
 
@@ -93,8 +93,9 @@ HiGHS is the required production solver for the implemented day-ahead, mFRR,
 and aFRR paths. Gurobi is not a runtime dependency. The one-case workflow, its
 persistent audit artifacts, and dedicated-market comparison of two or three
 markets are implemented. The command-line interface is implemented and calls
-those workflows. Streamlit is not built. MILP remains outside the approved
-roadmap.
+those workflows. The Streamlit application is implemented and calls the same
+workflows. Optional machine-commitment mixed-integer optimization is
+implemented behind those public workflows; it is off by default.
 
 ## User workflows
 
@@ -107,7 +108,7 @@ The target product supports three workflows:
 3. Explore a finite parameter grid or asset-size sweep (implemented as
    `execute_asset_sweep`).
 
-The implemented command line and the later Streamlit interface call the same
+The implemented command line and Streamlit application call the same
 public workflow services and read the same result artifacts. Direct CLI
 execution requires an explicit `--data-dir`; published data is not embedded in
 the installed package.
@@ -117,8 +118,9 @@ the installed package.
 - Simultaneous cross-market co-optimisation or revenue stacking.
 - FCR, intraday, imbalance, or other unimplemented markets. FCR is excluded from
   the product, not merely deferred from the first release.
-- Fixed-speed or minimum-stable-power machine commitment unless reopened by an
-  explicit later scope decision.
+- Fixed-speed, turbine-minimum, and strict mutual-exclusion machine
+  commitment are optional and off by default. See
+  [MACHINE_COMMITMENT.md](MACHINE_COMMITMENT.md).
 - A hybrid battery and pumped-hydro asset.
 - Multiple individually modelled machines or full fleet commitment.
 - Forecasting, rolling-horizon operation, or forecast-error analysis.

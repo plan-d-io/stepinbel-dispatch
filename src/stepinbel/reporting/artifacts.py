@@ -28,6 +28,9 @@ from stepinbel.optimizer.types import (
     ENERGY_TOL_MWH,
     POWER_TOL_MW,
     SIMULTANEOUS_TOL_MW,
+    TERMINATION_ACCEPTED_WITHIN_GAP,
+    TERMINATION_TIME_LIMIT_FEASIBLE,
+    USABLE_MILP_TERMINATIONS,
 )
 from stepinbel.reporting.constants import (
     ADDITIVE_PERIOD_FIELDS,
@@ -38,6 +41,7 @@ from stepinbel.reporting.constants import (
     PUBLISHED_TABLE_STEMS,
     REQUIRED_ARTIFACTS,
     RUN_ARTIFACT_SCHEMA_VERSION,
+    RUN_ARTIFACT_SCHEMA_VERSION_V2,
 )
 from stepinbel.reporting.io import (
     ArtifactError,
@@ -59,7 +63,6 @@ from stepinbel.reporting.periods import (
 from stepinbel.reporting.report import render_run_report
 from stepinbel.workflows.constants import (
     BEHAVIOURAL_BASELINE,
-    CASE_RUN_REQUEST_SCHEMA_VERSION,
     ELIA_METHODOLOGY,
     RUN_EVENT_SCHEMA_VERSION,
     RUN_STATUS_SCHEMA_VERSION,
@@ -67,6 +70,51 @@ from stepinbel.workflows.constants import (
 from stepinbel.workflows.errors import RunRequestError
 from stepinbel.workflows.request import CaseRunRequest, case_run_request_from_payload, serialize_case_run_request
 from stepinbel.workflows.serialize import dumps_json, format_utc, require_sha256, serialize_config
+
+
+def _solver_payload(request: CaseRunRequest, result: DispatchResult) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "solver_name": result.solver.solver_name,
+        "solver_version": result.solver.solver_version,
+        "package_version": result.solver.package_version,
+        "status": result.solver.status,
+        "status_raw": result.solver.status_raw,
+        "build_s": result.solver.build_s,
+        "solve_s": result.solver.solve_s,
+        "end_to_end_s": result.solver.end_to_end_s,
+        "num_col": result.solver.num_col,
+        "num_row": result.solver.num_row,
+        "num_nz": result.solver.num_nz,
+        "num_integer": result.solver.num_integer,
+        "num_binary": result.solver.num_binary,
+        "continuous_lp": result.solver.continuous_lp,
+        "options": dict(result.solver.options),
+        "diagnostics": dict(result.solver.diagnostics),
+    }
+    if request.artifact_schema_version != RUN_ARTIFACT_SCHEMA_VERSION_V2:
+        return payload
+    active = request.config.machine_commitment.physically_active()
+    diagnostics = result.solver.diagnostics
+    payload["formulation"] = "milp" if active else "lp"
+    payload["termination"] = (
+        diagnostics.get("termination", TERMINATION_ACCEPTED_WITHIN_GAP)
+        if active
+        else "lp_optimum"
+    )
+    if active:
+        payload["requested_mip_gap"] = diagnostics.get(
+            "requested_mip_gap", request.solver_options.mip_rel_gap
+        )
+        payload["achieved_mip_gap"] = diagnostics.get("achieved_mip_gap", diagnostics.get("mip_gap"))
+        payload["incumbent_objective"] = diagnostics.get(
+            "incumbent_objective", result.summary.total_site_revenue_eur
+        )
+        payload["best_bound"] = diagnostics.get("best_bound", diagnostics.get("mip_dual_bound"))
+        payload["time_limit_s"] = diagnostics.get(
+            "time_limit_s", request.solver_options.time_limit_s
+        )
+        payload["node_count"] = diagnostics.get("mip_node_count")
+    return payload
 
 
 def _json_safe(value: object) -> object:
@@ -136,9 +184,9 @@ def resolved_config_payload(request: CaseRunRequest, result: DispatchResult) -> 
     window = result.period.window
     asset = request.config.asset
     return {
-        "artifact_schema_version": RUN_ARTIFACT_SCHEMA_VERSION,
+        "artifact_schema_version": request.artifact_schema_version,
         "run_id": request.run_id,
-        "config": serialize_config(request.config),
+        "config": serialize_config(request.config, schema_version=request.request_schema_version),
         "resolved_start_utc": format_utc(window.start_utc),
         "resolved_end_exclusive_utc": format_utc(window.end_exclusive_utc),
         "interval_count": result.summary.interval_count,
@@ -161,7 +209,7 @@ def summary_payload(
     simultaneous_energy_net: float,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
-        "artifact_schema_version": RUN_ARTIFACT_SCHEMA_VERSION,
+        "artifact_schema_version": request.artifact_schema_version,
         "run_id": request.run_id,
         "market": request.config.market,
     }
@@ -208,8 +256,8 @@ def metadata_payload(
             "statement": ref["statement"],
         }
     return {
-        "request_schema_version": CASE_RUN_REQUEST_SCHEMA_VERSION,
-        "artifact_schema_version": RUN_ARTIFACT_SCHEMA_VERSION,
+        "request_schema_version": request.request_schema_version,
+        "artifact_schema_version": request.artifact_schema_version,
         "status_schema_version": RUN_STATUS_SCHEMA_VERSION,
         "event_schema_version": RUN_EVENT_SCHEMA_VERSION,
         "run_id": request.run_id,
@@ -233,26 +281,7 @@ def metadata_payload(
         "parity_statement": (
             "These are methodology references, not exact Watts.Happening-conformance claims."
         ),
-        "solver": _json_safe(
-            {
-                "solver_name": result.solver.solver_name,
-                "solver_version": result.solver.solver_version,
-                "package_version": result.solver.package_version,
-                "status": result.solver.status,
-                "status_raw": result.solver.status_raw,
-                "build_s": result.solver.build_s,
-                "solve_s": result.solver.solve_s,
-                "end_to_end_s": result.solver.end_to_end_s,
-                "num_col": result.solver.num_col,
-                "num_row": result.solver.num_row,
-                "num_nz": result.solver.num_nz,
-                "num_integer": result.solver.num_integer,
-                "num_binary": result.solver.num_binary,
-                "continuous_lp": result.solver.continuous_lp,
-                "options": dict(result.solver.options),
-                "diagnostics": dict(result.solver.diagnostics),
-            }
-        ),
+        "solver": _json_safe(_solver_payload(request, result)),
         "feasibility": {
             "max_bound_residual": result.feasibility.max_bound_residual,
             "max_initial_terminal_residual_mwh": result.feasibility.max_initial_terminal_residual_mwh,
@@ -331,12 +360,17 @@ def write_run_artifacts(
     return monthly, yearly, simultaneous
 
 
-def write_artifact_manifest(run_dir: Path, run_id: str) -> dict[str, object]:
+def write_artifact_manifest(
+    run_dir: Path,
+    run_id: str,
+    *,
+    artifact_schema_version: int = RUN_ARTIFACT_SCHEMA_VERSION,
+) -> dict[str, object]:
     names = [name for name in REQUIRED_ARTIFACTS if name != MANIFEST_EXCLUDED]
     entries = [file_entry(run_dir / name) for name in names]
     entries.sort(key=lambda item: str(item["filename"]))
     payload = {
-        "artifact_schema_version": RUN_ARTIFACT_SCHEMA_VERSION,
+        "artifact_schema_version": artifact_schema_version,
         "run_id": run_id,
         "entries": entries,
     }
@@ -389,15 +423,61 @@ def _require_schema(table: pa.Table, expected: pa.Schema, name: str) -> None:
             )
 
 
-def _require_completed_status(status: Mapping[str, Any], run_id: str) -> None:
+def _require_completed_status(
+    status: Mapping[str, Any],
+    run_id: str,
+    *,
+    artifact_schema_version: int,
+) -> None:
     if status.get("status_schema_version") != RUN_STATUS_SCHEMA_VERSION:
         raise ArtifactError("run_status.json schema version is wrong")
     if status.get("run_id") != run_id:
         raise ArtifactError("run_status.json run_id does not match")
     if status.get("state") != "completed":
         raise ArtifactError("run_status.json is not completed")
-    if status.get("artifact_schema_version") != RUN_ARTIFACT_SCHEMA_VERSION:
+    if status.get("artifact_schema_version") != artifact_schema_version:
         raise ArtifactError("run_status.json artifact schema version is wrong")
+
+
+def _validate_solver_record(solver: Mapping[str, Any], request: CaseRunRequest) -> None:
+    active = request.config.machine_commitment.physically_active()
+    if request.artifact_schema_version == RUN_ARTIFACT_SCHEMA_VERSION:
+        if solver.get("continuous_lp") is not True:
+            raise ArtifactError("run_metadata.json solver is not a continuous LP")
+        if int(solver.get("num_integer") or 0) != 0 or int(solver.get("num_binary") or 0) != 0:
+            raise ArtifactError("schema-v1 artifacts cannot contain integer variables")
+        extra = {"formulation", "termination", "requested_mip_gap", "achieved_mip_gap"}
+        if extra.intersection(solver):
+            raise ArtifactError("schema-v1 artifacts cannot contain MILP solver fields")
+        if active:
+            raise ArtifactError("schema-v1 artifacts cannot represent enabled machine-commitment options")
+        return
+    if request.artifact_schema_version != RUN_ARTIFACT_SCHEMA_VERSION_V2:
+        raise ArtifactError("unsupported artifact schema version")
+    if not active:
+        raise ArtifactError("schema-v2 artifacts require enabled machine-commitment options")
+    if solver.get("continuous_lp") is not False:
+        raise ArtifactError("run_metadata.json solver is not a mixed-integer model")
+    if solver.get("formulation") != "milp":
+        raise ArtifactError("run_metadata.json formulation is not milp")
+    termination = solver.get("termination")
+    if termination not in USABLE_MILP_TERMINATIONS:
+        raise ArtifactError("run_metadata.json termination is not a usable MILP result")
+    if termination == TERMINATION_ACCEPTED_WITHIN_GAP and solver.get("status") == "time_limit":
+        raise ArtifactError("time-limited MILP artifacts cannot claim acceptance within the requested gap")
+    if termination == TERMINATION_TIME_LIMIT_FEASIBLE and solver.get("status") == "optimal":
+        raise ArtifactError("time-limited MILP artifacts cannot record solver status optimal")
+    for key in ("requested_mip_gap", "achieved_mip_gap", "incumbent_objective", "best_bound", "time_limit_s"):
+        value = solver.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+            raise ArtifactError(f"run_metadata.json solver {key} is not a finite number")
+    if int(solver.get("num_integer") or 0) <= 0 and int(solver.get("num_binary") or 0) <= 0:
+        raise ArtifactError("run_metadata.json MILP solver has no integer variables")
+    if "node_count" not in solver:
+        raise ArtifactError("run_metadata.json solver is missing node_count")
+    node_count = solver.get("node_count")
+    if node_count is not None and (isinstance(node_count, bool) or type(node_count) is not int or node_count < 0):
+        raise ArtifactError("run_metadata.json solver node_count is invalid")
 
 
 def _require_csv_width(path_name: str, headers: list[str], rows: list[list[str]]) -> None:
@@ -628,11 +708,13 @@ def _validate_resolved_config(
     request: CaseRunRequest,
     derived: Mapping[str, float | int],
 ) -> None:
-    if resolved.get("artifact_schema_version") != RUN_ARTIFACT_SCHEMA_VERSION:
+    if resolved.get("artifact_schema_version") != request.artifact_schema_version:
         raise ArtifactError("resolved_config.json schema version is wrong")
     if resolved.get("run_id") != request.run_id:
         raise ArtifactError("resolved_config.json run_id does not match")
-    if resolved.get("config") != serialize_config(request.config):
+    if resolved.get("config") != serialize_config(
+        request.config, schema_version=request.request_schema_version
+    ):
         raise ArtifactError("resolved_config.json config does not match the frozen request")
     start, end = request.config.period.to_utc_bounds()
     if resolved.get("resolved_start_utc") != format_utc(start):
@@ -669,9 +751,9 @@ def _validate_metadata(
     derived: Mapping[str, float | int],
     summary: Mapping[str, Any],
 ) -> None:
-    if metadata.get("request_schema_version") != CASE_RUN_REQUEST_SCHEMA_VERSION:
+    if metadata.get("request_schema_version") != request.request_schema_version:
         raise ArtifactError("run_metadata.json request schema version is wrong")
-    if metadata.get("artifact_schema_version") != RUN_ARTIFACT_SCHEMA_VERSION:
+    if metadata.get("artifact_schema_version") != request.artifact_schema_version:
         raise ArtifactError("run_metadata.json artifact schema version is wrong")
     if metadata.get("status_schema_version") != RUN_STATUS_SCHEMA_VERSION:
         raise ArtifactError("run_metadata.json status schema version is wrong")
@@ -696,12 +778,23 @@ def _validate_metadata(
         raise ArtifactError("run_metadata.json interval count does not match dispatch")
     solver = metadata.get("solver")
     feasibility = metadata.get("feasibility")
-    if not isinstance(solver, dict) or solver.get("status") != "optimal":
-        raise ArtifactError("solver status is not optimal")
+    if not isinstance(solver, dict):
+        raise ArtifactError("run_metadata.json solver is missing")
+    status = solver.get("status")
+    if request.artifact_schema_version == RUN_ARTIFACT_SCHEMA_VERSION:
+        if status != "optimal":
+            raise ArtifactError("solver status is not optimal")
+    else:
+        termination = solver.get("termination")
+        if termination == TERMINATION_ACCEPTED_WITHIN_GAP and status != "optimal":
+            raise ArtifactError("accepted MILP artifacts must record solver status optimal")
+        if termination == TERMINATION_TIME_LIMIT_FEASIBLE and status != "time_limit":
+            raise ArtifactError("time-limited MILP artifacts must record solver status time_limit")
+        if termination not in USABLE_MILP_TERMINATIONS:
+            raise ArtifactError("run_metadata.json termination is not a usable MILP result")
     if not isinstance(feasibility, dict) or feasibility.get("ok") is not True:
         raise ArtifactError("feasibility report is not ok")
-    if solver.get("continuous_lp") is not True:
-        raise ArtifactError("run_metadata.json solver is not a continuous LP")
+    _validate_solver_record(solver, request)
     methodology = metadata.get("methodology_reference")
     if not isinstance(methodology, dict) or methodology.get("market") != request.config.market:
         raise ArtifactError("run_metadata.json methodology does not match the selected market")
@@ -774,12 +867,14 @@ def _validate_run_artifacts(directory: Path) -> Mapping[str, Path]:
     run_id = request.run_id
 
     status = _read_json(directory / "run_status.json")
-    _require_completed_status(status, run_id)
+    _require_completed_status(
+        status, run_id, artifact_schema_version=request.artifact_schema_version
+    )
 
     summary = _read_json(directory / "summary.json")
     if summary.get("run_id") != run_id:
         raise ArtifactError("summary.json run_id does not match")
-    if summary.get("artifact_schema_version") != RUN_ARTIFACT_SCHEMA_VERSION:
+    if summary.get("artifact_schema_version") != request.artifact_schema_version:
         raise ArtifactError("summary.json schema version is wrong")
     if summary.get("market") != request.config.market:
         raise ArtifactError("summary.json market does not match the frozen request")
@@ -793,7 +888,7 @@ def _validate_run_artifacts(directory: Path) -> Mapping[str, Path]:
     manifest = _read_json(directory / MANIFEST_EXCLUDED)
     if manifest.get("run_id") != run_id:
         raise ArtifactError("artifact_manifest.json run_id does not match")
-    if manifest.get("artifact_schema_version") != RUN_ARTIFACT_SCHEMA_VERSION:
+    if manifest.get("artifact_schema_version") != request.artifact_schema_version:
         raise ArtifactError("artifact_manifest.json schema version is wrong")
     entries = manifest.get("entries")
     if not isinstance(entries, list):

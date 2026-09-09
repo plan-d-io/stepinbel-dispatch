@@ -34,6 +34,12 @@ from ui.presentation.tokens import (
     REVIEW_READY_TITLE,
 )
 from ui.services.form import BID_FIXED, PRESET_CUSTOM, STORAGE_POND
+from ui.services.commitment import (
+    COMMITMENT_EXPANDER,
+    COMMITMENT_REVIEW_WARNING_TITLE,
+    COMMITMENT_TIME_NOTICE,
+    review_commitment_rows,
+)
 from ui.services.snapshot import (
     EXECUTION_DISABLED_REASON,
     INCOMPLETE_SNAPSHOT,
@@ -256,6 +262,15 @@ def _render_review_body(snapshot: Mapping[str, Any], *, demo: bool) -> None:
     st.write(_pv_text(site, demo=demo))
     render_section_heading("Balancing assumptions")
     st.write(_balancing_text(snapshot))
+    commitment_rows = review_commitment_rows(snapshot, market_count=len(markets))
+    if commitment_rows:
+        render_section_heading(COMMITMENT_EXPANDER)
+        render_table_frame(
+            title="Configured machine constraints",
+            caption="These optional physical constraints apply to every selected market run.",
+            data=_rows(tuple(commitment_rows)),
+        )
+        render_status_panel("warning", COMMITMENT_REVIEW_WARNING_TITLE, COMMITMENT_TIME_NOTICE)
     render_section_heading(REVIEW_FINAL_HEADING)
     render_status_panel("success", REVIEW_READY_TITLE, REVIEW_READY_BODY)
     for warning in review_warnings(snapshot):

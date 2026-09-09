@@ -5,8 +5,13 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
+from ui.services.commitment import (
+    format_gap_percent,
+    format_minutes_phrase,
+    termination_label,
+)
 from ui.services.artifacts import SOURCE_DEMO, bind_exact_result_artifacts
 from ui.services.paths import KIND_CASE, KIND_COMPARISON
 from ui.services.result_format import (
@@ -202,6 +207,14 @@ def _hide_paths(message: str) -> str:
     return message
 
 
+def order_structured_run_log(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        [dict(item) for item in rows],
+        key=lambda item: (str(item["timestamp"]), int(item["sequence"])),
+        reverse=True,
+    )
+
+
 def _read_events(path: Path) -> dict[str, Any]:
     try:
         raw = path.read_bytes()
@@ -240,7 +253,7 @@ def _read_events(path: Path) -> dict[str, Any]:
                 "message": _hide_paths(message),
             }
         )
-    rows.sort(key=lambda item: int(item["sequence"]))
+    rows = order_structured_run_log(rows)
     total = len(rows)
     limited = rows[:EVENTS_DISPLAY_LIMIT]
     return {
@@ -352,6 +365,18 @@ def _configured_groups(
         ("Site", site_rows),
         ("Market", market_rows),
     ]
+    commitment = config.get("machine_commitment")
+    if isinstance(commitment, Mapping):
+        constraint_rows: list[tuple[str, str]] = []
+        if commitment.get("fixed_speed_pump") is True:
+            constraint_rows.append(("Fixed-speed pump", "Enabled"))
+        fraction = commitment.get("turbine_minimum_output_fraction")
+        if is_finite_number(fraction) and float(fraction) > 0.0:
+            constraint_rows.append(("Minimum turbine output", format_gap_percent(fraction)))
+        if commitment.get("forbid_simultaneous_operation") is True:
+            constraint_rows.append(("Prevent simultaneous pumping and generation", "Enabled"))
+        if constraint_rows:
+            main.append(("Machine operating constraints", constraint_rows))
     advanced: list[tuple[str, str]] = [
         ("Resolved start UTC", _require_str(resolved.get("resolved_start_utc"))),
         ("Resolved end exclusive UTC", _require_str(resolved.get("resolved_end_exclusive_utc"))),
@@ -388,15 +413,19 @@ def _software(metadata: Mapping[str, Any]) -> list[tuple[str, str]]:
             _fail()
     if _require_str(solver.get("solver_name")) != "HiGHS":
         _fail()
-    if _require_bool(solver.get("continuous_lp")) is not True:
-        _fail()
+    continuous = _require_bool(solver.get("continuous_lp"))
+    formulation = solver.get("formulation")
+    if continuous:
+        if formulation not in {None, "lp"}:
+            _fail()
+        model_type = "Continuous linear program"
+    else:
+        if formulation != "milp":
+            _fail()
+        model_type = "Mixed-integer linear program (MILP)"
     diagnostics = _as_mapping(solver.get("diagnostics"))
-    try:
-        iterations = require_int(diagnostics.get("simplex_iteration_count"))
-    except ValueError:
-        _fail()
     baseline = _nested(metadata, "behavioural_baseline")
-    return [
+    rows = [
         ("StepInBel version", _require_str(metadata.get("software_version"))),
         ("Python version", _require_str(metadata.get("python_version"))),
         ("PHS baseline tag", _require_str(baseline.get("tag"))),
@@ -404,7 +433,7 @@ def _software(metadata: Mapping[str, Any]) -> list[tuple[str, str]]:
         ("HiGHS solver", f"HiGHS {_require_str(solver.get('solver_version'))}"),
         ("Solver package version", _require_str(solver.get("package_version"))),
         ("Solver status", _require_str(solver.get("status"))),
-        ("Model type", "Continuous linear program"),
+        ("Model type", model_type),
         ("Columns", format_count(solver.get("num_col"))),
         ("Rows", format_count(solver.get("num_row"))),
         ("Non-zero coefficients", format_count(solver.get("num_nz"))),
@@ -413,8 +442,28 @@ def _software(metadata: Mapping[str, Any]) -> list[tuple[str, str]]:
         ("Build duration", format_seconds(solver.get("build_s"))),
         ("Solve duration", format_seconds(solver.get("solve_s"))),
         ("End-to-end duration", format_seconds(solver.get("end_to_end_s"))),
-        ("Simplex iterations", format_count(iterations)),
     ]
+    if not continuous:
+        try:
+            rows.insert(8, ("Formulation", "MILP"))
+            rows.append(("Termination", termination_label(solver.get("termination"))))
+            rows.append(("Requested optimality gap", format_gap_percent(solver.get("requested_mip_gap"))))
+            rows.append(("Achieved optimality gap", format_gap_percent(solver.get("achieved_mip_gap"))))
+            rows.append(("Maximum solve time", format_minutes_phrase(solver.get("time_limit_s"))))
+            rows.append(("Incumbent objective", f"{require_finite(solver.get('incumbent_objective')):.12g}"))
+            rows.append(("Best bound", f"{require_finite(solver.get('best_bound')):.12g}"))
+            node_count = solver.get("node_count")
+            if node_count is not None:
+                rows.append(("Node count", format_count(node_count)))
+        except (TypeError, ValueError):
+            _fail()
+        return rows
+    try:
+        iterations = require_int(diagnostics.get("simplex_iteration_count"))
+    except ValueError:
+        _fail()
+    rows.append(("Simplex iterations", format_count(iterations)))
+    return rows
 
 
 def _solution_checks(metadata: Mapping[str, Any]) -> dict[str, Any]:

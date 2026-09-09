@@ -16,6 +16,7 @@ from stepinbel.config import (
     DayAheadCase,
     FixedMinimumCapacityBid,
     HistoricalQuantileCapacityBid,
+    MachineCommitmentConfig,
     MFRRCase,
     MarketCase,
     Period,
@@ -37,6 +38,7 @@ PUBLIC_CONFIG_TYPES = (
     BelgianDeliveryPeriod,
     UtcPeriod,
     SimulationConfig,
+    MachineCommitmentConfig,
 )
 FORBIDDEN_FIELDS = {
     "dispatch_mode",
@@ -221,6 +223,24 @@ def test_belgian_delivery_period_rejects_unconvertible_end_date() -> None:
         BelgianDeliveryPeriod(date.max, date.max)
 
 
+def test_machine_commitment_defaults_are_inactive() -> None:
+    options = MachineCommitmentConfig()
+    assert options.fixed_speed_pump is False
+    assert options.turbine_minimum_output_fraction == 0.0
+    assert options.forbid_simultaneous_operation is False
+    assert options.physically_active() is False
+    assert SimulationConfig(period=_utc_day(), market_case=DayAheadCase()).machine_commitment == options
+
+
+def test_machine_commitment_rejects_invalid_fractions() -> None:
+    with pytest.raises(ConfigError, match="finite"):
+        MachineCommitmentConfig(turbine_minimum_output_fraction=math.nan)
+    with pytest.raises(ConfigError, match=r"\[0, 1\]"):
+        MachineCommitmentConfig(turbine_minimum_output_fraction=1.01)
+    with pytest.raises(ConfigError, match="boolean"):
+        MachineCommitmentConfig(fixed_speed_pump=0)  # type: ignore[arg-type]
+
+
 def test_exported_type_aliases_exist() -> None:
     assert ActivationProfile
     assert CapacityBid
@@ -258,4 +278,6 @@ def _example(cls):
         return _utc_day()
     if cls is SimulationConfig:
         return SimulationConfig(period=_utc_day(), market_case=DayAheadCase())
+    if cls is MachineCommitmentConfig:
+        return MachineCommitmentConfig()
     raise AssertionError(cls)

@@ -6,10 +6,18 @@ overwritten. Source Parquet files are not copied into the run.
 
 Schema versions:
 
-- `CASE_RUN_REQUEST_SCHEMA_VERSION = 1`
-- `RUN_ARTIFACT_SCHEMA_VERSION = 1`
+- `CASE_RUN_REQUEST_SCHEMA_VERSION = 1` for ordinary LP runs. Version `2` is
+  used when a machine-commitment option is enabled.
+- `RUN_ARTIFACT_SCHEMA_VERSION = 1` for ordinary LP artifacts. Version `2`
+  records MILP termination and gap metadata. A physically valid time-limited
+  incumbent is a completed v2 result; it is not recorded as optimal or as
+  accepted within the requested gap.
 - `RUN_STATUS_SCHEMA_VERSION = 1`
 - `RUN_EVENT_SCHEMA_VERSION = 1`
+
+Existing schema-v1 LP requests and artifacts remain readable. Ordinary LP
+runs still emit the unchanged v1 structure. A v1 request is never silently
+reinterpreted as a MILP. See [MACHINE_COMMITMENT.md](MACHINE_COMMITMENT.md).
 
 The authoritative completion condition is completed status plus a present and
 valid `artifact_manifest.json`. A caller is notified of `verify_artifacts`

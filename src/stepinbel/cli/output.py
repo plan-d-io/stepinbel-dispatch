@@ -54,6 +54,11 @@ def dumps_payload(payload: Mapping[str, Any]) -> str:
         ) from exc
 
 
+def write_warning(message: str) -> None:
+    sys.stderr.write(message + "\n")
+    sys.stderr.flush()
+
+
 def write_success(payload: Mapping[str, Any]) -> int:
     sys.stdout.write(dumps_payload(payload) + "\n")
     sys.stdout.flush()

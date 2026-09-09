@@ -12,6 +12,10 @@ from typing import Any, Mapping, NamedTuple
 
 from stepinbel.reporting import (
     ArtifactError,
+    MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+    MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2,
+    RUN_ARTIFACT_SCHEMA_VERSION,
+    RUN_ARTIFACT_SCHEMA_VERSION_V2,
     validate_market_comparison_artifacts,
     validate_run_artifacts,
 )
@@ -457,6 +461,46 @@ def _store_receipt(key: tuple[object, ...], receipt: _BindingReceipt) -> None:
             _RECEIPTS.popitem(last=False)
 
 
+def _require_case_schema(request: object) -> None:
+    active = request.config.machine_commitment.physically_active()
+    request_version = int(request.request_schema_version)
+    artifact_version = int(request.artifact_schema_version)
+    if active:
+        if request_version != 2 or artifact_version != RUN_ARTIFACT_SCHEMA_VERSION_V2:
+            raise ValueError("schema")
+        return
+    if request_version != 1 or artifact_version != RUN_ARTIFACT_SCHEMA_VERSION:
+        raise ValueError("schema")
+
+
+def _require_comparison_schema(request: object) -> None:
+    versions = {
+        child.request_schema_version for child in request.case_requests.values()
+    }
+    artifact_versions = {
+        child.artifact_schema_version for child in request.case_requests.values()
+    }
+    if len(versions) != 1 or len(artifact_versions) != 1:
+        raise ValueError("schema")
+    first = next(iter(request.case_requests.values()))
+    _require_case_schema(first)
+    parent_request = int(request.comparison_request_schema_version)
+    parent_artifact = int(request.comparison_artifact_schema_version)
+    active = first.config.machine_commitment.physically_active()
+    if active:
+        if (
+            parent_request != 2
+            or parent_artifact != MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2
+        ):
+            raise ValueError("schema")
+        return
+    if (
+        parent_request != 1
+        or parent_artifact != MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION
+    ):
+        raise ValueError("schema")
+
+
 def _semantic_bind(validated: dict[str, Any]) -> BoundResultArtifacts:
     directory = Path(str(validated["output_directory"]))
     kind = str(validated["kind"])
@@ -475,6 +519,7 @@ def _semantic_bind(validated: dict[str, Any]) -> BoundResultArtifacts:
         if request.config.market != markets[0]:
             raise ValueError("market")
         _period_matches(request.config.period, period)
+        _require_case_schema(request)
         return BoundResultArtifacts(
             result=validated,
             directory=directory,
@@ -491,6 +536,7 @@ def _semantic_bind(validated: dict[str, Any]) -> BoundResultArtifacts:
         stored_markets = list(request.case_requests)
         if stored_markets != markets:
             raise ValueError("markets")
+        _require_comparison_schema(request)
         child_mappings: dict[str, Mapping[str, Path]] = {}
         for market, child in request.case_requests.items():
             if child.config.market != market:

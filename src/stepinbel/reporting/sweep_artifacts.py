@@ -10,14 +10,13 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
+from stepinbel.optimizer.types import HIGHS_RANDOM_SEED, SolverOptions
 from stepinbel.reporting.constants import (
-    ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
     ASSET_SWEEP_INTERPRETATION,
     ASSET_SWEEP_ROW_FIELDS,
     ASSET_SWEEP_SUMMARY_KEYS,
     ASSET_SWEEP_TOP_LEVEL_FILES,
     MANIFEST_EXCLUDED,
-    RUN_ARTIFACT_SCHEMA_VERSION,
 )
 from stepinbel.reporting.io import (
     ArtifactError,
@@ -29,7 +28,6 @@ from stepinbel.reporting.io import (
 )
 from stepinbel.reporting.sweep_report import render_asset_sweep_report
 from stepinbel.workflows.constants import (
-    ASSET_SWEEP_REQUEST_SCHEMA_VERSION,
     BEHAVIOURAL_BASELINE,
     RUN_EVENT_SCHEMA_VERSION,
     RUN_STATUS_SCHEMA_VERSION,
@@ -243,7 +241,7 @@ def sweep_manifest_entries(request: AssetSweepRequest) -> tuple[str, ...]:
 def write_asset_sweep_artifact_manifest(run_dir: Path, request: AssetSweepRequest) -> dict[str, object]:
     entries = [_posix_entry(run_dir, name) for name in sweep_manifest_entries(request)]
     payload = {
-        "asset_sweep_artifact_schema_version": ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+        "asset_sweep_artifact_schema_version": request.asset_sweep_artifact_schema_version,
         "run_id": request.run_id,
         "entries": entries,
     }
@@ -285,7 +283,7 @@ def write_asset_sweep_artifacts(
     site = request.case_requests[request.candidate_order[0]].config.site
     highest_label = request.candidate_labels[highest_revenue_candidate_id]
     summary = {
-        "asset_sweep_artifact_schema_version": ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+        "asset_sweep_artifact_schema_version": request.asset_sweep_artifact_schema_version,
         "run_id": request.run_id,
         "state": "completed",
         "market": request.market,
@@ -317,13 +315,13 @@ def write_asset_sweep_artifacts(
             "run_id": case_runs[candidate_id].request.run_id,
             "relative_directory": f"cases/{candidate_id}",
             "market": request.market,
-            "artifact_schema_version": RUN_ARTIFACT_SCHEMA_VERSION,
+            "artifact_schema_version": case_runs[candidate_id].request.artifact_schema_version,
             "artifact_manifest_byte_size": manifest.stat().st_size,
             "artifact_manifest_sha256": sha256_file(manifest),
         }
     metadata = {
-        "asset_sweep_request_schema_version": ASSET_SWEEP_REQUEST_SCHEMA_VERSION,
-        "asset_sweep_artifact_schema_version": ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+        "asset_sweep_request_schema_version": request.asset_sweep_request_schema_version,
+        "asset_sweep_artifact_schema_version": request.asset_sweep_artifact_schema_version,
         "status_schema_version": RUN_STATUS_SCHEMA_VERSION,
         "event_schema_version": RUN_EVENT_SCHEMA_VERSION,
         "run_id": request.run_id,
@@ -439,23 +437,35 @@ def _values_match_exactly(actual: object, expected: object, field: str) -> None:
         raise ArtifactError(f"{field} does not match the independent rebuild")
 
 
-def _expected_highs_options(detailed_output: object) -> dict[str, object]:
-    if type(detailed_output) is not bool:
+def _expected_highs_options(solver_options: SolverOptions, *, is_mip: bool) -> dict[str, object]:
+    if type(solver_options.detailed_output) is not bool:
         raise ArtifactError("frozen solver detailed_output must be a bool")
-    return {
-        "output_flag": detailed_output,
-        "log_to_console": detailed_output,
-        "random_seed": 0,
+    expected: dict[str, object] = {
+        "output_flag": solver_options.detailed_output,
+        "log_to_console": solver_options.detailed_output,
+        "random_seed": HIGHS_RANDOM_SEED,
         "solver": "choose",
         "presolve": "on",
     }
+    if not is_mip:
+        return expected
+    expected["mip_rel_gap"] = float(solver_options.mip_rel_gap)
+    expected["threads"] = 0
+    expected["time_limit"] = float(solver_options.time_limit_s)
+    return expected
 
 
-def _require_highs_options(options: object, detailed_output: bool, field: str) -> dict[str, object]:
+def _require_highs_options(
+    options: object,
+    solver_options: SolverOptions,
+    *,
+    is_mip: bool,
+    field: str,
+) -> dict[str, object]:
     if not isinstance(options, Mapping) or isinstance(options, (str, bytes)):
         raise ArtifactError(f"{field} must be an object")
     actual = dict(options)
-    _values_match_exactly(actual, _expected_highs_options(detailed_output), field)
+    _values_match_exactly(actual, _expected_highs_options(solver_options, is_mip=is_mip), field)
     return actual
 
 
@@ -464,14 +474,21 @@ def _require_highs_solver_fields(
     solver_version: object,
     package_version: object,
     options: object,
-    detailed_output: bool,
+    solver_options: SolverOptions,
+    *,
+    is_mip: bool,
     field: str,
 ) -> tuple[str, str, str, dict[str, object]]:
     if type(solver_name) is not str or solver_name != "HiGHS":
         raise ArtifactError(f"{field} solver_name must be HiGHS")
     version = _require_non_empty_str(solver_version, f"{field} solver_version")
     package = _require_non_empty_str(package_version, f"{field} package_version")
-    option_values = _require_highs_options(options, detailed_output, f"{field} options")
+    option_values = _require_highs_options(
+        options,
+        solver_options,
+        is_mip=is_mip,
+        field=f"{field} options",
+    )
     return solver_name, version, package, option_values
 
 
@@ -498,8 +515,9 @@ def _require_persisted_child_provenance(
         solver.get("solver_version"),
         solver.get("package_version"),
         solver.get("options"),
-        frozen.solver_options.detailed_output,
-        f"cases/{candidate_id}/run_metadata.json solver",
+        frozen.solver_options,
+        is_mip=frozen.config.machine_commitment.physically_active(),
+        field=f"cases/{candidate_id}/run_metadata.json solver",
     )
     return python_version, name, version, package, options
 
@@ -541,8 +559,9 @@ def _require_write_time_solver_provenance(
                 solver.solver_version,
                 solver.package_version,
                 solver.options,
-                frozen.solver_options.detailed_output,
-                f"{candidate_id} in-memory solver",
+                frozen.solver_options,
+                is_mip=frozen.config.machine_commitment.physically_active(),
+                field=f"{candidate_id} in-memory solver",
             )
         )
         persisted.append(_require_persisted_child_provenance(run.directory, frozen, candidate_id))
@@ -629,7 +648,7 @@ def _validate_asset_sweep_artifacts(directory: Path) -> Mapping[str, Path]:
     status = _read_json(directory / "run_status.json")
     _require_typed_int(status.get("status_schema_version"), RUN_STATUS_SCHEMA_VERSION, "run_status.json schema version")
     artifact_version = status.get("asset_sweep_artifact_schema_version", status.get("artifact_schema_version"))
-    _require_typed_int(artifact_version, ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION, "run_status.json artifact schema version")
+    _require_typed_int(artifact_version, request.asset_sweep_artifact_schema_version, "run_status.json artifact schema version")
     if type(status.get("run_id")) is not str or status["run_id"] != request.run_id:
         raise ArtifactError("run_status.json run_id does not match")
     if status.get("state") != "completed":
@@ -642,7 +661,7 @@ def _validate_asset_sweep_artifacts(directory: Path) -> Mapping[str, Path]:
         raise ArtifactError("artifact_manifest.json run_id does not match")
     _require_typed_int(
         manifest.get("asset_sweep_artifact_schema_version"),
-        ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+        request.asset_sweep_artifact_schema_version,
         "artifact_manifest.json schema version",
     )
     entries = manifest.get("entries")
@@ -695,6 +714,8 @@ def _validate_asset_sweep_artifacts(directory: Path) -> Mapping[str, Path]:
             raise ArtifactError(f"cases/{candidate_id} market case does not match the parent")
         if frozen.config.site != first.config.site:
             raise ArtifactError(f"cases/{candidate_id} site does not match the parent")
+        if frozen.config.machine_commitment != first.config.machine_commitment:
+            raise ArtifactError(f"cases/{candidate_id} machine-commitment options do not match the parent")
         if frozen.solver_options != first.solver_options:
             raise ArtifactError(f"cases/{candidate_id} solver options do not match the parent")
         if frozen.data_manifest_sha256 != request.data_manifest_sha256:
@@ -739,7 +760,7 @@ def _validate_asset_sweep_artifacts(directory: Path) -> Mapping[str, Path]:
     if set(summary) != set(ASSET_SWEEP_SUMMARY_KEYS):
         raise ArtifactError("asset_sweep_summary.json keys are wrong")
     expected_summary = {
-        "asset_sweep_artifact_schema_version": ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+        "asset_sweep_artifact_schema_version": request.asset_sweep_artifact_schema_version,
         "run_id": request.run_id,
         "state": "completed",
         "market": request.market,
@@ -763,12 +784,12 @@ def _validate_asset_sweep_artifacts(directory: Path) -> Mapping[str, Path]:
     _require_exact_keys(metadata, ASSET_SWEEP_METADATA_KEYS, "asset_sweep_metadata.json")
     _require_typed_int(
         metadata.get("asset_sweep_request_schema_version"),
-        ASSET_SWEEP_REQUEST_SCHEMA_VERSION,
+        request.asset_sweep_request_schema_version,
         "asset_sweep_metadata.json request schema version",
     )
     _require_typed_int(
         metadata.get("asset_sweep_artifact_schema_version"),
-        ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION,
+        request.asset_sweep_artifact_schema_version,
         "asset_sweep_metadata.json artifact schema version",
     )
     _require_typed_int(
@@ -843,13 +864,13 @@ def _validate_asset_sweep_artifacts(directory: Path) -> Mapping[str, Path]:
             "run_id": request.case_requests[candidate_id].run_id,
             "relative_directory": f"cases/{candidate_id}",
             "market": request.market,
-            "artifact_schema_version": RUN_ARTIFACT_SCHEMA_VERSION,
+            "artifact_schema_version": request.case_requests[candidate_id].artifact_schema_version,
             "artifact_manifest_byte_size": size,
             "artifact_manifest_sha256": digest,
         }
         _require_typed_int(
             record["artifact_schema_version"],
-            RUN_ARTIFACT_SCHEMA_VERSION,
+            request.case_requests[candidate_id].artifact_schema_version,
             f"asset_sweep_metadata.json children[{candidate_id}] schema version",
         )
         size_value = _require_non_negative_int(

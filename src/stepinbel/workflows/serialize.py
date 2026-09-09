@@ -18,6 +18,7 @@ from stepinbel.config import (
     DayAheadCase,
     FixedMinimumCapacityBid,
     HistoricalQuantileCapacityBid,
+    MachineCommitmentConfig,
     MFRRCase,
     SimulationConfig,
     SiteConfig,
@@ -27,7 +28,10 @@ from stepinbel.optimizer import SolverOptions
 from stepinbel.workflows.constants import (
     BEHAVIOURAL_BASELINE,
     CASE_RUN_REQUEST_SCHEMA_VERSION,
+    CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
     RUN_ARTIFACT_SCHEMA_VERSION,
+    RUN_ARTIFACT_SCHEMA_VERSION_V2,
+    SUPPORTED_CASE_SCHEMA_VERSIONS,
 )
 from stepinbel.workflows.errors import RunRequestError
 
@@ -101,6 +105,36 @@ def require_mapping(value: object, field: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RunRequestError(f"{field} must be an object", category="invalid_request")
     return value
+
+
+def require_schema_version(value: object, allowed: frozenset[int], field: str) -> int:
+    if type(value) is not int or value not in allowed:
+        raise RunRequestError(f"{field} is not supported", category="invalid_request")
+    return value
+
+
+def preferred_case_schema_versions(config: SimulationConfig) -> tuple[int, int]:
+    if config.machine_commitment.physically_active():
+        return CASE_RUN_REQUEST_SCHEMA_VERSION_V2, RUN_ARTIFACT_SCHEMA_VERSION_V2
+    return CASE_RUN_REQUEST_SCHEMA_VERSION, RUN_ARTIFACT_SCHEMA_VERSION
+
+
+def require_matching_case_schema_versions(request_version: int, artifact_version: int) -> None:
+    if request_version == CASE_RUN_REQUEST_SCHEMA_VERSION:
+        if artifact_version != RUN_ARTIFACT_SCHEMA_VERSION:
+            raise RunRequestError(
+                "schema-v1 requests must use artifact schema version 1",
+                category="invalid_request",
+            )
+        return
+    if request_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2:
+        if artifact_version != RUN_ARTIFACT_SCHEMA_VERSION_V2:
+            raise RunRequestError(
+                "schema-v2 requests must use artifact schema version 2",
+                category="invalid_request",
+            )
+        return
+    raise RunRequestError("request_schema_version is not supported", category="invalid_request")
 
 
 def require_keys(payload: Mapping[str, Any], keys: tuple[str, ...], field: str) -> None:
@@ -470,40 +504,121 @@ def deserialize_site(payload: object) -> SiteConfig:
         raise RunRequestError(str(exc), category="invalid_configuration") from exc
 
 
-def serialize_config(config: SimulationConfig) -> dict[str, Any]:
+_MACHINE_COMMITMENT_KEYS = (
+    "fixed_speed_pump",
+    "turbine_minimum_output_fraction",
+    "forbid_simultaneous_operation",
+)
+
+
+def serialize_machine_commitment(commitment: MachineCommitmentConfig) -> dict[str, Any]:
     return {
+        "fixed_speed_pump": bool(commitment.fixed_speed_pump),
+        "turbine_minimum_output_fraction": float(commitment.turbine_minimum_output_fraction),
+        "forbid_simultaneous_operation": bool(commitment.forbid_simultaneous_operation),
+    }
+
+
+def deserialize_machine_commitment(payload: object) -> MachineCommitmentConfig:
+    body = require_mapping(payload, "machine_commitment")
+    require_keys(body, _MACHINE_COMMITMENT_KEYS, "machine_commitment")
+    try:
+        return MachineCommitmentConfig(
+            fixed_speed_pump=require_bool(body["fixed_speed_pump"], "fixed_speed_pump"),
+            turbine_minimum_output_fraction=require_finite(
+                body["turbine_minimum_output_fraction"],
+                "turbine_minimum_output_fraction",
+            ),
+            forbid_simultaneous_operation=require_bool(
+                body["forbid_simultaneous_operation"],
+                "forbid_simultaneous_operation",
+            ),
+        )
+    except ConfigError as exc:
+        raise RunRequestError(str(exc), category="invalid_configuration") from exc
+
+
+def serialize_config(config: SimulationConfig, *, schema_version: int) -> dict[str, Any]:
+    payload = {
         "period": serialize_period(config.period),
         "market_case": serialize_market_case(config.market_case),
         "asset": serialize_asset(config.asset),
         "site": serialize_site(config.site),
     }
+    if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2:
+        payload["machine_commitment"] = serialize_machine_commitment(config.machine_commitment)
+        return payload
+    if schema_version != CASE_RUN_REQUEST_SCHEMA_VERSION:
+        raise RunRequestError("request_schema_version is not supported", category="invalid_request")
+    if config.machine_commitment.physically_active():
+        raise RunRequestError(
+            "schema-v1 requests cannot represent enabled machine-commitment options",
+            category="invalid_request",
+        )
+    return payload
 
 
-def deserialize_config(payload: object) -> SimulationConfig:
+def deserialize_config(payload: object, *, schema_version: int) -> SimulationConfig:
     body = require_mapping(payload, "config")
-    require_keys(body, ("period", "market_case", "asset", "site"), "config")
+    if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION:
+        require_keys(body, ("period", "market_case", "asset", "site"), "config")
+        commitment = MachineCommitmentConfig()
+    elif schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2:
+        require_keys(
+            body,
+            ("period", "market_case", "asset", "site", "machine_commitment"),
+            "config",
+        )
+        commitment = deserialize_machine_commitment(body["machine_commitment"])
+    else:
+        raise RunRequestError("request_schema_version is not supported", category="invalid_request")
     try:
         return SimulationConfig(
             period=deserialize_period(body["period"]),
             market_case=deserialize_market_case(body["market_case"]),
             asset=deserialize_asset(body["asset"]),
             site=deserialize_site(body["site"]),
+            machine_commitment=commitment,
         )
     except ConfigError as exc:
         raise RunRequestError(str(exc), category="invalid_configuration") from exc
 
 
-def serialize_solver_options(options: SolverOptions) -> dict[str, Any]:
-    return {"detailed_output": bool(options.detailed_output)}
+_SOLVER_OPTIONS_V1_KEYS = ("detailed_output",)
+_SOLVER_OPTIONS_V2_KEYS = ("detailed_output", "mip_rel_gap", "time_limit_s")
 
 
-def deserialize_solver_options(payload: object) -> SolverOptions:
+def serialize_solver_options(options: SolverOptions, *, schema_version: int) -> dict[str, Any]:
+    payload = {"detailed_output": bool(options.detailed_output)}
+    if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION:
+        return payload
+    if schema_version != CASE_RUN_REQUEST_SCHEMA_VERSION_V2:
+        raise RunRequestError("request_schema_version is not supported", category="invalid_request")
+    payload["mip_rel_gap"] = float(options.mip_rel_gap)
+    payload["time_limit_s"] = float(options.time_limit_s)
+    return payload
+
+
+def deserialize_solver_options(payload: object, *, schema_version: int) -> SolverOptions:
     body = require_mapping(payload, "solver_options")
-    require_keys(body, ("detailed_output",), "solver_options")
     try:
-        return SolverOptions(detailed_output=require_bool(body["detailed_output"], "detailed_output"))
+        if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION:
+            require_keys(body, _SOLVER_OPTIONS_V1_KEYS, "solver_options")
+            return SolverOptions(
+                detailed_output=require_bool(body["detailed_output"], "detailed_output")
+            )
+        if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2:
+            require_keys(body, _SOLVER_OPTIONS_V2_KEYS, "solver_options")
+            return SolverOptions(
+                detailed_output=require_bool(body["detailed_output"], "detailed_output"),
+                mip_rel_gap=require_finite(body["mip_rel_gap"], "mip_rel_gap"),
+                time_limit_s=require_finite(body["time_limit_s"], "time_limit_s"),
+            )
+    except RunRequestError:
+        raise
     except Exception as exc:
         raise RunRequestError(str(exc), category="invalid_request") from exc
+    raise RunRequestError("request_schema_version is not supported", category="invalid_request")
 
 
 def serialize_baseline(baseline: Mapping[str, str]) -> dict[str, str]:
@@ -542,8 +657,9 @@ _REQUEST_KEYS = (
 
 
 def request_to_payload(request: Any) -> dict[str, Any]:
+    schema_version = int(request.request_schema_version)
     return {
-        "request_schema_version": int(request.request_schema_version),
+        "request_schema_version": schema_version,
         "run_id": request.run_id,
         "created_at_utc": format_utc(request.created_at_utc),
         "software_version": request.software_version,
@@ -551,29 +667,40 @@ def request_to_payload(request: Any) -> dict[str, Any]:
         "data_directory": str(request.data_directory),
         "data_manifest_sha256": request.data_manifest_sha256,
         "output_directory": str(request.output_directory),
-        "config": serialize_config(request.config),
-        "solver_options": serialize_solver_options(request.solver_options),
+        "config": serialize_config(request.config, schema_version=schema_version),
+        "solver_options": serialize_solver_options(
+            request.solver_options, schema_version=schema_version
+        ),
         "behavioural_baseline": serialize_baseline(request.behavioural_baseline),
     }
 
 
 def payload_to_request_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
     require_keys(payload, _REQUEST_KEYS, "request")
-    if payload["request_schema_version"] != CASE_RUN_REQUEST_SCHEMA_VERSION:
-        raise RunRequestError("request_schema_version is not supported", category="invalid_request")
-    if payload["artifact_schema_version"] != RUN_ARTIFACT_SCHEMA_VERSION:
-        raise RunRequestError("artifact_schema_version is not supported", category="invalid_request")
+    request_version = require_schema_version(
+        payload["request_schema_version"],
+        SUPPORTED_CASE_SCHEMA_VERSIONS,
+        "request_schema_version",
+    )
+    artifact_version = require_schema_version(
+        payload["artifact_schema_version"],
+        SUPPORTED_CASE_SCHEMA_VERSIONS,
+        "artifact_schema_version",
+    )
+    require_matching_case_schema_versions(request_version, artifact_version)
     software = require_str(payload["software_version"], "software_version")
     return {
-        "request_schema_version": CASE_RUN_REQUEST_SCHEMA_VERSION,
+        "request_schema_version": request_version,
         "run_id": validate_run_id(payload["run_id"]),
         "created_at_utc": parse_utc(payload["created_at_utc"], "created_at_utc"),
         "software_version": software,
-        "artifact_schema_version": RUN_ARTIFACT_SCHEMA_VERSION,
+        "artifact_schema_version": artifact_version,
         "data_directory": require_absolute_path(payload["data_directory"], "data_directory"),
         "data_manifest_sha256": require_sha256(payload["data_manifest_sha256"], "data_manifest_sha256"),
         "output_directory": require_absolute_path(payload["output_directory"], "output_directory"),
-        "config": deserialize_config(payload["config"]),
-        "solver_options": deserialize_solver_options(payload["solver_options"]),
+        "config": deserialize_config(payload["config"], schema_version=request_version),
+        "solver_options": deserialize_solver_options(
+            payload["solver_options"], schema_version=request_version
+        ),
         "behavioural_baseline": deserialize_baseline(payload["behavioural_baseline"]),
     }

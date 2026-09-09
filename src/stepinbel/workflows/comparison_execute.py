@@ -11,7 +11,6 @@ from stepinbel.config import ConfigError
 from stepinbel.data import DataAccessError, DataBundleError, open_published_bundle
 from stepinbel.markets import MarketInputError
 from stepinbel.optimizer import ModelError, SolverError
-from stepinbel.reporting.constants import MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION
 from stepinbel.reporting.io import ArtifactError, atomic_write_text
 from stepinbel.workflows.comparison_request import (
     MarketComparisonRequest,
@@ -111,7 +110,7 @@ def execute_market_comparison(
         request.run_id,
         progress,
         stages=stages,
-        artifact_schema_version=MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+        artifact_schema_version=request.comparison_artifact_schema_version,
     )
     atomic_write_text(output / "comparison_request.json", dumps_comparison_request(request))
     current = stages[0]
