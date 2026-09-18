@@ -15,10 +15,9 @@ The simulator version is stored in `src/stepinbel/VERSION`. The independent
 front-end version is stored in `ui/VERSION`. The application displays them as
 separate values (Simulator 0.3.0 and Front-end 0.3.1).
 
-Optional co-located wind is configured after PV and stays off by default.
-Co-located PV includes a regional profile selector (Belgium by default).
-Data explorer can download the displayed week as CSV for the selected market
-and complete week; generation waits until the download is requested.
+Optional co-located generation covers PV and wind. Co-located PV includes a
+regional profile selector (Belgium by default). Wind is configured after PV,
+stays off by default, and uses one of four published profiles.
 
 Project authorship is recorded in [`AUTHORS.md`](../AUTHORS.md).
 

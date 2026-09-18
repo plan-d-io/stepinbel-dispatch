@@ -51,13 +51,19 @@ comparison without starting a new simulation. Demo mode does not run HiGHS.
 ## Run your own simulation
 
 Choose the markets, Belgian delivery period, pumped-hydro asset, optional
-co-located PV, optional co-located wind, and grid connection. Review the
-resolved settings, then start the run. Progress stays visible while the worker
-is active.
+co-located generation, and grid connection. Review the resolved settings, then
+start the run. Progress stays visible while the worker is active.
 
 Completed live results are stored under `outputs/<run-id>/`.
 
-## Optional co-located wind
+## Optional co-located generation
+
+### PV
+
+Co-located PV uses a selectable regional production profile. Belgium is the
+default. The other published regions remain available.
+
+### Wind
 
 Wind is optional and stays off by default. When enabled, choose a capacity and
 one of four published profiles:
@@ -68,24 +74,11 @@ one of four published profiles:
 - Onshore Wallonia
 
 Wind can supply pumping, be exported within the grid limit, or be curtailed.
-It is configured independently of PV. Wind-enabled runs write schema-v3
-artifacts. Wind does not itself make the optimisation mixed-integer; machine
-operating constraints remain a separate Advanced setting.
+It is configured independently of PV. Machine operating constraints remain a
+separate Advanced setting.
 
 Configure, Review, Results, Data explorer, Technical details, and Downloads
 show wind when it is included in the stored configuration.
-
-## PV region
-
-Co-located PV uses a selectable regional production profile. Belgium is the
-default. The other published regions remain available.
-
-## Data explorer weekly CSV
-
-On Results, **Download displayed week (CSV)** in Data explorer builds a CSV
-for the selected market and the complete displayed week. Chart zoom does not
-change the downloaded rows. The file is generated only when you click the
-button.
 
 ## Bundled market data
 
