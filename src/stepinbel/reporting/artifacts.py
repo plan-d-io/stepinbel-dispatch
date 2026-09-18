@@ -42,6 +42,14 @@ from stepinbel.reporting.constants import (
     REQUIRED_ARTIFACTS,
     RUN_ARTIFACT_SCHEMA_VERSION,
     RUN_ARTIFACT_SCHEMA_VERSION_V2,
+    RUN_ARTIFACT_SCHEMA_VERSION_V3,
+    additive_period_fields_for,
+    dispatch_columns_for,
+    dispatch_schema_for,
+    dispatch_summary_fields_for,
+    is_wind_schema,
+    period_summary_columns_for,
+    published_table_stems_for,
 )
 from stepinbel.reporting.io import (
     ArtifactError,
@@ -55,7 +63,9 @@ from stepinbel.reporting.io import (
 )
 from stepinbel.reporting.periods import (
     MONTHLY_SUMMARY_SCHEMA,
+    MONTHLY_SUMMARY_SCHEMA_V3,
     YEARLY_SUMMARY_SCHEMA,
+    YEARLY_SUMMARY_SCHEMA_V3,
     build_period_summaries,
     build_period_summaries_from_tables,
     simultaneous_interval_energy_net_eur,
@@ -91,21 +101,46 @@ def _solver_payload(request: CaseRunRequest, result: DispatchResult) -> dict[str
         "options": dict(result.solver.options),
         "diagnostics": dict(result.solver.diagnostics),
     }
-    if request.artifact_schema_version != RUN_ARTIFACT_SCHEMA_VERSION_V2:
+    if request.artifact_schema_version == RUN_ARTIFACT_SCHEMA_VERSION:
         return payload
     active = request.config.machine_commitment.physically_active()
     diagnostics = result.solver.diagnostics
+    if request.artifact_schema_version == RUN_ARTIFACT_SCHEMA_VERSION_V2:
+        payload["formulation"] = "milp" if active else "lp"
+        payload["termination"] = (
+            diagnostics.get("termination", TERMINATION_ACCEPTED_WITHIN_GAP)
+            if active
+            else "lp_optimum"
+        )
+        if active:
+            payload["requested_mip_gap"] = diagnostics.get(
+                "requested_mip_gap", request.solver_options.mip_rel_gap
+            )
+            payload["achieved_mip_gap"] = diagnostics.get(
+                "achieved_mip_gap", diagnostics.get("mip_gap")
+            )
+            payload["incumbent_objective"] = diagnostics.get(
+                "incumbent_objective", result.summary.total_site_revenue_eur
+            )
+            payload["best_bound"] = diagnostics.get("best_bound", diagnostics.get("mip_dual_bound"))
+            payload["time_limit_s"] = diagnostics.get(
+                "time_limit_s", request.solver_options.time_limit_s
+            )
+            payload["node_count"] = diagnostics.get("mip_node_count")
+        return payload
+    if request.artifact_schema_version != RUN_ARTIFACT_SCHEMA_VERSION_V3:
+        raise ArtifactError("unsupported artifact schema version")
     payload["formulation"] = "milp" if active else "lp"
     payload["termination"] = (
-        diagnostics.get("termination", TERMINATION_ACCEPTED_WITHIN_GAP)
-        if active
-        else "lp_optimum"
+        diagnostics.get("termination", TERMINATION_ACCEPTED_WITHIN_GAP) if active else "lp_optimum"
     )
     if active:
         payload["requested_mip_gap"] = diagnostics.get(
             "requested_mip_gap", request.solver_options.mip_rel_gap
         )
-        payload["achieved_mip_gap"] = diagnostics.get("achieved_mip_gap", diagnostics.get("mip_gap"))
+        payload["achieved_mip_gap"] = diagnostics.get(
+            "achieved_mip_gap", diagnostics.get("mip_gap")
+        )
         payload["incumbent_objective"] = diagnostics.get(
             "incumbent_objective", result.summary.total_site_revenue_eur
         )
@@ -114,6 +149,13 @@ def _solver_payload(request: CaseRunRequest, result: DispatchResult) -> dict[str
             "time_limit_s", request.solver_options.time_limit_s
         )
         payload["node_count"] = diagnostics.get("mip_node_count")
+    else:
+        payload["requested_mip_gap"] = None
+        payload["achieved_mip_gap"] = None
+        payload["incumbent_objective"] = None
+        payload["best_bound"] = None
+        payload["time_limit_s"] = None
+        payload["node_count"] = None
     return payload
 
 
@@ -137,9 +179,9 @@ def _json_safe(value: object) -> object:
     raise ArtifactError(f"cannot serialize {type(value).__name__} to JSON")
 
 
-def _summary_fields(result: DispatchResult) -> dict[str, object]:
+def _summary_fields(result: DispatchResult, *, schema_version: int) -> dict[str, object]:
     payload: dict[str, object] = {}
-    for name in DISPATCH_SUMMARY_FIELDS:
+    for name in dispatch_summary_fields_for(schema_version):
         payload[name] = getattr(result.summary, name)
     return payload
 
@@ -152,13 +194,13 @@ def _period_kind(request: CaseRunRequest) -> str:
     raise ArtifactError("unsupported period kind")
 
 
-def _dispatch_csv_rows(table: pa.Table) -> list[list[object]]:
+def _dispatch_csv_rows(table: pa.Table, columns: tuple[str, ...]) -> list[list[object]]:
     timestamps = table.column("datetime_utc").to_pylist()
-    columns = [table.column(name).to_pylist() for name in DISPATCH_COLUMNS[1:]]
+    data_columns = [table.column(name).to_pylist() for name in columns[1:]]
     rows: list[list[object]] = []
     for i, stamp in enumerate(timestamps):
         row: list[object] = [format_utc(stamp)]
-        for values in columns:
+        for values in data_columns:
             row.append(values[i])
         rows.append(row)
     return rows
@@ -172,12 +214,31 @@ def _capacity_csv_rows(table: pa.Table) -> list[list[object]]:
     return rows
 
 
-def _period_csv_rows(table: pa.Table) -> list[list[object]]:
-    columns = [table.column(name).to_pylist() for name in PERIOD_SUMMARY_COLUMNS]
+def _period_csv_rows(table: pa.Table, columns: tuple[str, ...]) -> list[list[object]]:
+    data_columns = [table.column(name).to_pylist() for name in columns]
     rows: list[list[object]] = []
     for i in range(table.num_rows):
-        rows.append([values[i] for values in columns])
+        rows.append([values[i] for values in data_columns])
     return rows
+
+
+def _feasibility_payload(result: DispatchResult, schema_version: int) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "max_bound_residual": result.feasibility.max_bound_residual,
+        "max_initial_terminal_residual_mwh": result.feasibility.max_initial_terminal_residual_mwh,
+        "max_balance_residual_mwh": result.feasibility.max_balance_residual_mwh,
+        "max_ramp_residual_mw": result.feasibility.max_ramp_residual_mw,
+        "max_pv_residual_mw": result.feasibility.max_pv_residual_mw,
+        "max_grid_residual_mw": result.feasibility.max_grid_residual_mw,
+        "max_capacity_residual": result.feasibility.max_capacity_residual,
+        "max_interval_accounting_residual_eur": result.feasibility.max_interval_accounting_residual_eur,
+        "max_summary_accounting_residual_eur": result.feasibility.max_summary_accounting_residual_eur,
+        "max_objective_residual_eur": result.feasibility.max_objective_residual_eur,
+        "ok": result.feasibility.ok,
+    }
+    if is_wind_schema(schema_version):
+        payload["max_wind_residual_mw"] = result.feasibility.max_wind_residual_mw
+    return payload
 
 
 def resolved_config_payload(request: CaseRunRequest, result: DispatchResult) -> dict[str, object]:
@@ -213,7 +274,7 @@ def summary_payload(
         "run_id": request.run_id,
         "market": request.config.market,
     }
-    payload.update(_summary_fields(result))
+    payload.update(_summary_fields(result, schema_version=request.artifact_schema_version))
     payload["diagnostics"] = {
         "simultaneous_interval_energy_net_eur": simultaneous_energy_net,
     }
@@ -227,7 +288,8 @@ def metadata_payload(
 ) -> dict[str, object]:
     window = result.period.window
     tables: dict[str, object] = {}
-    for stem in PUBLISHED_TABLE_STEMS:
+    stems = published_table_stems_for(request.artifact_schema_version)
+    for stem in stems:
         table = bundle.tables[stem]
         tables[stem] = {
             "expected_sha256": table.expected_sha256,
@@ -282,19 +344,7 @@ def metadata_payload(
             "These are methodology references, not exact Watts.Happening-conformance claims."
         ),
         "solver": _json_safe(_solver_payload(request, result)),
-        "feasibility": {
-            "max_bound_residual": result.feasibility.max_bound_residual,
-            "max_initial_terminal_residual_mwh": result.feasibility.max_initial_terminal_residual_mwh,
-            "max_balance_residual_mwh": result.feasibility.max_balance_residual_mwh,
-            "max_ramp_residual_mw": result.feasibility.max_ramp_residual_mw,
-            "max_pv_residual_mw": result.feasibility.max_pv_residual_mw,
-            "max_grid_residual_mw": result.feasibility.max_grid_residual_mw,
-            "max_capacity_residual": result.feasibility.max_capacity_residual,
-            "max_interval_accounting_residual_eur": result.feasibility.max_interval_accounting_residual_eur,
-            "max_summary_accounting_residual_eur": result.feasibility.max_summary_accounting_residual_eur,
-            "max_objective_residual_eur": result.feasibility.max_objective_residual_eur,
-            "ok": result.feasibility.ok,
-        },
+        "feasibility": _feasibility_payload(result, request.artifact_schema_version),
         "required_artifacts": list(REQUIRED_ARTIFACTS),
     }
 
@@ -308,10 +358,17 @@ def write_run_artifacts(
     """Write every successful artifact except the manifest and job journal."""
     simultaneous = simultaneous_interval_energy_net_eur(result)
     monthly, yearly = build_period_summaries(result)
+    dispatch_columns = dispatch_columns_for(request.artifact_schema_version)
+    summary_fields = dispatch_summary_fields_for(request.artifact_schema_version)
+    period_columns = period_summary_columns_for(request.artifact_schema_version)
     atomic_write_text(run_dir / "run_request.json", dumps_json(serialize_case_run_request(request)))
     atomic_write_json(run_dir / "resolved_config.json", resolved_config_payload(request, result))
     atomic_write_parquet(run_dir / "dispatch.parquet", result.dispatch)
-    atomic_write_csv(run_dir / "dispatch.csv", DISPATCH_COLUMNS, _dispatch_csv_rows(result.dispatch))
+    atomic_write_csv(
+        run_dir / "dispatch.csv",
+        dispatch_columns,
+        _dispatch_csv_rows(result.dispatch, dispatch_columns),
+    )
     capacity = result.capacity_results
     if capacity.schema != CAPACITY_RESULT_SCHEMA:
         capacity = capacity.cast(CAPACITY_RESULT_SCHEMA)
@@ -328,25 +385,25 @@ def write_run_artifacts(
     summary_row = [
         request.run_id,
         request.config.market,
-        *[getattr(result.summary, name) for name in DISPATCH_SUMMARY_FIELDS],
+        *[getattr(result.summary, name) for name in summary_fields],
         simultaneous,
     ]
     atomic_write_csv(
         run_dir / "summary.csv",
-        ("run_id", "market", *DISPATCH_SUMMARY_FIELDS, "simultaneous_interval_energy_net_eur"),
+        ("run_id", "market", *summary_fields, "simultaneous_interval_energy_net_eur"),
         [summary_row],
     )
     atomic_write_parquet(run_dir / "monthly_summary.parquet", monthly)
     atomic_write_csv(
         run_dir / "monthly_summary.csv",
-        PERIOD_SUMMARY_COLUMNS,
-        _period_csv_rows(monthly),
+        period_columns,
+        _period_csv_rows(monthly, period_columns),
     )
     atomic_write_parquet(run_dir / "yearly_summary.parquet", yearly)
     atomic_write_csv(
         run_dir / "yearly_summary.csv",
-        PERIOD_SUMMARY_COLUMNS,
-        _period_csv_rows(yearly),
+        period_columns,
+        _period_csv_rows(yearly, period_columns),
     )
     atomic_write_json(run_dir / "run_metadata.json", metadata_payload(request, result, bundle))
     atomic_write_text(
@@ -452,10 +509,51 @@ def _validate_solver_record(solver: Mapping[str, Any], request: CaseRunRequest) 
         if active:
             raise ArtifactError("schema-v1 artifacts cannot represent enabled machine-commitment options")
         return
-    if request.artifact_schema_version != RUN_ARTIFACT_SCHEMA_VERSION_V2:
+    if request.artifact_schema_version == RUN_ARTIFACT_SCHEMA_VERSION_V2:
+        if not active:
+            raise ArtifactError("schema-v2 artifacts require enabled machine-commitment options")
+        _require_milp_solver_record(solver)
+        return
+    if request.artifact_schema_version != RUN_ARTIFACT_SCHEMA_VERSION_V3:
         raise ArtifactError("unsupported artifact schema version")
-    if not active:
-        raise ArtifactError("schema-v2 artifacts require enabled machine-commitment options")
+    if not request.config.wind_enabled():
+        raise ArtifactError("schema-v3 artifacts require enabled co-located wind")
+    for key in (
+        "formulation",
+        "termination",
+        "requested_mip_gap",
+        "achieved_mip_gap",
+        "incumbent_objective",
+        "best_bound",
+        "time_limit_s",
+        "node_count",
+    ):
+        if key not in solver:
+            raise ArtifactError(f"run_metadata.json solver is missing {key}")
+    if active:
+        _require_milp_solver_record(solver)
+        return
+    if solver.get("continuous_lp") is not True:
+        raise ArtifactError("run_metadata.json solver is not a continuous LP")
+    if int(solver.get("num_integer") or 0) != 0 or int(solver.get("num_binary") or 0) != 0:
+        raise ArtifactError("schema-v3 LP artifacts cannot contain integer variables")
+    if solver.get("formulation") != "lp":
+        raise ArtifactError("run_metadata.json formulation is not lp")
+    if solver.get("termination") != "lp_optimum":
+        raise ArtifactError("run_metadata.json termination is not lp_optimum")
+    for key in (
+        "requested_mip_gap",
+        "achieved_mip_gap",
+        "incumbent_objective",
+        "best_bound",
+        "time_limit_s",
+        "node_count",
+    ):
+        if solver.get(key) is not None:
+            raise ArtifactError(f"schema-v3 LP artifacts must record {key} as null")
+
+
+def _require_milp_solver_record(solver: Mapping[str, Any]) -> None:
     if solver.get("continuous_lp") is not False:
         raise ArtifactError("run_metadata.json solver is not a mixed-integer model")
     if solver.get("formulation") != "milp":
@@ -526,9 +624,9 @@ def _csv_matches_table(path: Path, table: pa.Table, timestamp_column: str | None
             _close(actual, float(expected), f"{path.name}.{name}[{i}]")
 
 
-def _period_totals(table: pa.Table) -> dict[str, float]:
-    totals = {name: 0.0 for name in ADDITIVE_PERIOD_FIELDS}
-    for name in ADDITIVE_PERIOD_FIELDS:
+def _period_totals(table: pa.Table, fields: tuple[str, ...]) -> dict[str, float]:
+    totals = {name: 0.0 for name in fields}
+    for name in fields:
         values = table.column(name).to_pylist()
         totals[name] = float(sum(float(item) for item in values))
     return totals
@@ -617,6 +715,7 @@ def _derive_from_dispatch(
     pv_enabled: bool,
 ) -> dict[str, float | int]:
     n = dispatch.num_rows
+    wind_enabled = request.config.wind_enabled()
     sell = _float_col(dispatch, "market_sell_price_eur_mwh")
     buy = _float_col(dispatch, "market_buy_price_eur_mwh")
     pump = _float_col(dispatch, "p_pump_mw")
@@ -632,6 +731,17 @@ def _derive_from_dispatch(
     prices = dispatch.column("pv_export_price_eur_mwh").to_pylist()
     starts = dispatch.column("reservoir_start_mwh").to_pylist()
     ends = dispatch.column("reservoir_end_mwh").to_pylist()
+    if wind_enabled:
+        wind_rev = _float_col(dispatch, "wind_revenue_eur")
+        wind_available = _float_col(dispatch, "wind_available_mw")
+        wind_self = _float_col(dispatch, "wind_to_pump_mw")
+        wind_export = _float_col(dispatch, "wind_export_mw")
+        wind_curtail = _float_col(dispatch, "wind_curtail_mw")
+        wind_prices = dispatch.column("wind_export_price_eur_mwh").to_pylist()
+    else:
+        zeros = np.zeros(n, dtype=np.float64)
+        wind_rev = wind_available = wind_self = wind_export = wind_curtail = zeros
+        wind_prices = [None] * n
 
     energy_gross = DT_H * sell * turbine
     charging = DT_H * buy * pump_grid
@@ -647,9 +757,15 @@ def _derive_from_dispatch(
         else:
             expected_pv = float(price) * float(pv_export[i]) * DT_H
         _close(float(pv_rev[i]), expected_pv, f"dispatch.pv_revenue_eur[{i}]")
+        wind_price = wind_prices[i]
+        if wind_price is None:
+            expected_wind = 0.0
+        else:
+            expected_wind = float(wind_price) * float(wind_export[i]) * DT_H
+        _close(float(wind_rev[i]), expected_wind, f"dispatch.wind_revenue_eur[{i}]")
         _close(
             float(total_rev[i]),
-            float(energy_net[i] + pv_rev[i]),
+            float(energy_net[i] + pv_rev[i] + wind_rev[i]),
             f"dispatch.total_revenue_eur[{i}]",
         )
         if not pv_enabled:
@@ -664,6 +780,8 @@ def _derive_from_dispatch(
             ):
                 if value != 0.0:
                     raise ArtifactError(f"no-PV dispatch {field}[{i}] must be exact zero")
+        if wind_enabled and wind_price is None:
+            raise ArtifactError("wind dispatch must have wind export prices")
 
     mask = (pump > SIMULTANEOUS_TOL_MW) & (turbine > SIMULTANEOUS_TOL_MW)
     capacity_rev = float(sum(capacity.column("capacity_revenue_eur").to_pylist() or [0.0]))
@@ -679,12 +797,17 @@ def _derive_from_dispatch(
         "market_energy_net_eur": float(energy_net.sum()),
         "capacity_revenue_eur": capacity_rev,
         "pv_revenue_eur": float(pv_rev.sum()),
+        "wind_revenue_eur": float(wind_rev.sum()),
         "pumped_mwh": float(pump.sum() * DT_H),
         "turbined_mwh": float(turbine.sum() * DT_H),
         "pv_available_mwh": float(pv_available.sum() * DT_H),
         "pv_self_consumed_mwh": float(pv_self.sum() * DT_H),
         "pv_exported_mwh": float(pv_export.sum() * DT_H),
         "pv_curtailed_mwh": float(pv_curtail.sum() * DT_H),
+        "wind_available_mwh": float(wind_available.sum() * DT_H),
+        "wind_self_consumed_mwh": float(wind_self.sum() * DT_H),
+        "wind_exported_mwh": float(wind_export.sum() * DT_H),
+        "wind_curtailed_mwh": float(wind_curtail.sum() * DT_H),
         "simultaneous_interval_count": int(np.count_nonzero(mask)),
         "simultaneous_pump_mwh": float(pump[mask].sum() * DT_H),
         "simultaneous_turbine_mwh": float(turbine[mask].sum() * DT_H),
@@ -699,6 +822,7 @@ def _derive_from_dispatch(
         float(derived["market_energy_net_eur"])
         + float(derived["capacity_revenue_eur"])
         + float(derived["pv_revenue_eur"])
+        + float(derived["wind_revenue_eur"])
     )
     return derived
 
@@ -784,6 +908,14 @@ def _validate_metadata(
     if request.artifact_schema_version == RUN_ARTIFACT_SCHEMA_VERSION:
         if status != "optimal":
             raise ArtifactError("solver status is not optimal")
+    elif (
+        request.artifact_schema_version == RUN_ARTIFACT_SCHEMA_VERSION_V3
+        and not request.config.machine_commitment.physically_active()
+    ):
+        if status != "optimal":
+            raise ArtifactError("solver status is not optimal")
+        if solver.get("termination") != "lp_optimum":
+            raise ArtifactError("run_metadata.json termination is not lp_optimum")
     else:
         termination = solver.get("termination")
         if termination == TERMINATION_ACCEPTED_WITHIN_GAP and status != "optimal":
@@ -806,9 +938,10 @@ def _validate_metadata(
         if methodology.get("filename") != ref["filename"] or methodology.get("sha256") != ref["sha256"]:
             raise ArtifactError("run_metadata.json methodology reference is wrong")
     tables = metadata.get("published_data", {}).get("tables")
-    if not isinstance(tables, dict) or set(tables) != set(PUBLISHED_TABLE_STEMS):
+    stems = published_table_stems_for(request.artifact_schema_version)
+    if not isinstance(tables, dict) or set(tables) != set(stems):
         raise ArtifactError("run_metadata.json is missing published table provenance")
-    for stem in PUBLISHED_TABLE_STEMS:
+    for stem in stems:
         entry = tables[stem]
         if not isinstance(entry, dict):
             raise ArtifactError(f"run_metadata.json table {stem} is invalid")
@@ -913,13 +1046,16 @@ def _validate_run_artifacts(directory: Path) -> Mapping[str, Path]:
             raise ArtifactError(f"{name} hash does not match the manifest")
 
     dispatch = _read_parquet(directory / "dispatch.parquet")
-    _require_schema(dispatch, DISPATCH_SCHEMA, "dispatch.parquet")
+    _require_schema(
+        dispatch, dispatch_schema_for(request.artifact_schema_version), "dispatch.parquet"
+    )
     start, end = request.config.period.to_utc_bounds()
     _require_dispatch_time_axis(dispatch, start, end)
+    nullable = {"pv_export_price_eur_mwh"}
     _require_finite_numeric_table(
         dispatch,
         "dispatch.parquet",
-        nullable=frozenset({"pv_export_price_eur_mwh"}),
+        nullable=frozenset(nullable),
     )
     _csv_matches_table(directory / "dispatch.csv", dispatch, "datetime_utc")
 
@@ -932,7 +1068,8 @@ def _validate_run_artifacts(directory: Path) -> Mapping[str, Path]:
     _validate_resolved_config(resolved, request, derived)
     _validate_metadata(metadata, request, derived, summary)
 
-    for name in DISPATCH_SUMMARY_FIELDS:
+    summary_fields = dispatch_summary_fields_for(request.artifact_schema_version)
+    for name in summary_fields:
         if name not in summary:
             raise ArtifactError(f"summary.json is missing {name}")
         want = derived[name]
@@ -950,11 +1087,15 @@ def _validate_run_artifacts(directory: Path) -> Mapping[str, Path]:
         float(derived["simultaneous_interval_energy_net_eur"]),
         "summary.json diagnostics",
     )
+    wind_rev = float(summary.get("wind_revenue_eur", 0.0)) if is_wind_schema(
+        request.artifact_schema_version
+    ) else 0.0
     _close(
         float(summary["total_site_revenue_eur"]),
         float(summary["market_energy_net_eur"])
         + float(summary["capacity_revenue_eur"])
-        + float(summary["pv_revenue_eur"]),
+        + float(summary["pv_revenue_eur"])
+        + wind_rev,
         "summary.json total identity",
     )
 
@@ -962,7 +1103,7 @@ def _validate_run_artifacts(directory: Path) -> Mapping[str, Path]:
     expected_headers = (
         "run_id",
         "market",
-        *DISPATCH_SUMMARY_FIELDS,
+        *summary_fields,
         "simultaneous_interval_energy_net_eur",
     )
     if tuple(csv_headers) != expected_headers or len(csv_rows) != 1:
@@ -971,7 +1112,7 @@ def _validate_run_artifacts(directory: Path) -> Mapping[str, Path]:
     csv_row = csv_rows[0]
     if csv_row[0] != run_id or csv_row[1] != summary.get("market"):
         raise ArtifactError("summary.csv identity does not match summary.json")
-    for index, name in enumerate(DISPATCH_SUMMARY_FIELDS, start=2):
+    for index, name in enumerate(summary_fields, start=2):
         actual = summary[name]
         if isinstance(actual, int) and not isinstance(actual, bool):
             if int(csv_row[index]) != actual:
@@ -986,8 +1127,18 @@ def _validate_run_artifacts(directory: Path) -> Mapping[str, Path]:
 
     monthly = _read_parquet(directory / "monthly_summary.parquet")
     yearly = _read_parquet(directory / "yearly_summary.parquet")
-    _require_schema(monthly, MONTHLY_SUMMARY_SCHEMA, "monthly_summary.parquet")
-    _require_schema(yearly, YEARLY_SUMMARY_SCHEMA, "yearly_summary.parquet")
+    monthly_schema = (
+        MONTHLY_SUMMARY_SCHEMA_V3
+        if is_wind_schema(request.artifact_schema_version)
+        else MONTHLY_SUMMARY_SCHEMA
+    )
+    yearly_schema = (
+        YEARLY_SUMMARY_SCHEMA_V3
+        if is_wind_schema(request.artifact_schema_version)
+        else YEARLY_SUMMARY_SCHEMA
+    )
+    _require_schema(monthly, monthly_schema, "monthly_summary.parquet")
+    _require_schema(yearly, yearly_schema, "yearly_summary.parquet")
     rebuilt_monthly, rebuilt_yearly = build_period_summaries_from_tables(
         dispatch,
         capacity,
@@ -1002,9 +1153,10 @@ def _validate_run_artifacts(directory: Path) -> Mapping[str, Path]:
     if months != sorted(months) or years != sorted(years):
         raise ArtifactError("period summary rows are not sorted")
 
-    monthly_totals = _period_totals(monthly)
-    yearly_totals = _period_totals(yearly)
-    for name in ADDITIVE_PERIOD_FIELDS:
+    additive_fields = additive_period_fields_for(request.artifact_schema_version)
+    monthly_totals = _period_totals(monthly, additive_fields)
+    yearly_totals = _period_totals(yearly, additive_fields)
+    for name in additive_fields:
         expected = float(derived[name])
         _close(monthly_totals[name], expected, f"monthly {name}")
         _close(yearly_totals[name], expected, f"yearly {name}")

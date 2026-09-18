@@ -11,7 +11,7 @@ import pyarrow as pa
 
 from stepinbel.optimizer import DispatchResult
 from stepinbel.optimizer.types import DT_H, SIMULTANEOUS_TOL_MW
-from stepinbel.reporting.constants import PERIOD_SUMMARY_COLUMNS
+from stepinbel.reporting.constants import PERIOD_SUMMARY_COLUMNS, period_summary_columns_for
 from stepinbel.reporting.io import ArtifactError
 
 _BRUSSELS = ZoneInfo("Europe/Brussels")
@@ -40,8 +40,40 @@ MONTHLY_SUMMARY_SCHEMA = pa.schema(
     ]
 )
 
+MONTHLY_SUMMARY_SCHEMA_V3 = pa.schema(
+    [
+        pa.field("period", pa.string()),
+        pa.field("interval_count", pa.int64()),
+        pa.field("duration_hours", pa.float64()),
+        pa.field("energy_gross_eur", pa.float64()),
+        pa.field("grid_charging_cost_eur", pa.float64()),
+        pa.field("market_energy_net_eur", pa.float64()),
+        pa.field("capacity_revenue_eur", pa.float64()),
+        pa.field("pv_revenue_eur", pa.float64()),
+        pa.field("wind_revenue_eur", pa.float64()),
+        pa.field("total_site_revenue_eur", pa.float64()),
+        pa.field("pumped_mwh", pa.float64()),
+        pa.field("turbined_mwh", pa.float64()),
+        pa.field("full_cycles", pa.float64()),
+        pa.field("pv_available_mwh", pa.float64()),
+        pa.field("pv_self_consumed_mwh", pa.float64()),
+        pa.field("pv_exported_mwh", pa.float64()),
+        pa.field("pv_curtailed_mwh", pa.float64()),
+        pa.field("wind_available_mwh", pa.float64()),
+        pa.field("wind_self_consumed_mwh", pa.float64()),
+        pa.field("wind_exported_mwh", pa.float64()),
+        pa.field("wind_curtailed_mwh", pa.float64()),
+        pa.field("simultaneous_interval_count", pa.int64()),
+        pa.field("simultaneous_overlap_mwh", pa.float64()),
+        pa.field("simultaneous_interval_energy_net_eur", pa.float64()),
+    ]
+)
+
 YEARLY_SUMMARY_SCHEMA = pa.schema(
     [pa.field("period", pa.int64())] + list(MONTHLY_SUMMARY_SCHEMA)[1:]
+)
+YEARLY_SUMMARY_SCHEMA_V3 = pa.schema(
+    [pa.field("period", pa.int64())] + list(MONTHLY_SUMMARY_SCHEMA_V3)[1:]
 )
 
 
@@ -85,13 +117,37 @@ def _empty_bucket() -> dict[str, float]:
         "pv_self_consumed_mwh": 0.0,
         "pv_exported_mwh": 0.0,
         "pv_curtailed_mwh": 0.0,
+        "wind_revenue_eur": 0.0,
+        "wind_available_mwh": 0.0,
+        "wind_self_consumed_mwh": 0.0,
+        "wind_exported_mwh": 0.0,
+        "wind_curtailed_mwh": 0.0,
         "simultaneous_interval_count": 0.0,
         "simultaneous_overlap_mwh": 0.0,
         "simultaneous_interval_energy_net_eur": 0.0,
     }
 
 
-def _add_interval(bucket: dict[str, float], *, sell: float, buy: float, pump: float, pump_grid: float, turbine: float, energy_net: float, pv_rev: float, pv_available: float, pv_self: float, pv_export: float, pv_curtail: float) -> None:
+def _add_interval(
+    bucket: dict[str, float],
+    *,
+    sell: float,
+    buy: float,
+    pump: float,
+    pump_grid: float,
+    turbine: float,
+    energy_net: float,
+    pv_rev: float,
+    pv_available: float,
+    pv_self: float,
+    pv_export: float,
+    pv_curtail: float,
+    wind_rev: float = 0.0,
+    wind_available: float = 0.0,
+    wind_self: float = 0.0,
+    wind_export: float = 0.0,
+    wind_curtail: float = 0.0,
+) -> None:
     energy_gross = DT_H * sell * turbine
     charging = DT_H * buy * pump_grid
     simultaneous = pump > SIMULTANEOUS_TOL_MW and turbine > SIMULTANEOUS_TOL_MW
@@ -107,6 +163,11 @@ def _add_interval(bucket: dict[str, float], *, sell: float, buy: float, pump: fl
     bucket["pv_self_consumed_mwh"] += pv_self * DT_H
     bucket["pv_exported_mwh"] += pv_export * DT_H
     bucket["pv_curtailed_mwh"] += pv_curtail * DT_H
+    bucket["wind_revenue_eur"] += wind_rev
+    bucket["wind_available_mwh"] += wind_available * DT_H
+    bucket["wind_self_consumed_mwh"] += wind_self * DT_H
+    bucket["wind_exported_mwh"] += wind_export * DT_H
+    bucket["wind_curtailed_mwh"] += wind_curtail * DT_H
     if simultaneous:
         bucket["simultaneous_interval_count"] += 1.0
         bucket["simultaneous_overlap_mwh"] += min(pump, turbine) * DT_H
@@ -125,7 +186,8 @@ def _finalize_rows(
         energy_net = bucket["market_energy_net_eur"]
         capacity = bucket["capacity_revenue_eur"]
         pv_rev = bucket["pv_revenue_eur"]
-        total = energy_net + capacity + pv_rev
+        wind_rev = bucket["wind_revenue_eur"]
+        total = energy_net + capacity + pv_rev + wind_rev
         cycles = bucket["turbined_mwh"] / e_max_mwh
         rows.append(
             {
@@ -137,6 +199,7 @@ def _finalize_rows(
                 "market_energy_net_eur": float(energy_net),
                 "capacity_revenue_eur": float(capacity),
                 "pv_revenue_eur": float(pv_rev),
+                "wind_revenue_eur": float(wind_rev),
                 "total_site_revenue_eur": float(total),
                 "pumped_mwh": float(bucket["pumped_mwh"]),
                 "turbined_mwh": float(bucket["turbined_mwh"]),
@@ -145,6 +208,10 @@ def _finalize_rows(
                 "pv_self_consumed_mwh": float(bucket["pv_self_consumed_mwh"]),
                 "pv_exported_mwh": float(bucket["pv_exported_mwh"]),
                 "pv_curtailed_mwh": float(bucket["pv_curtailed_mwh"]),
+                "wind_available_mwh": float(bucket["wind_available_mwh"]),
+                "wind_self_consumed_mwh": float(bucket["wind_self_consumed_mwh"]),
+                "wind_exported_mwh": float(bucket["wind_exported_mwh"]),
+                "wind_curtailed_mwh": float(bucket["wind_curtailed_mwh"]),
                 "simultaneous_interval_count": int(bucket["simultaneous_interval_count"]),
                 "simultaneous_overlap_mwh": float(bucket["simultaneous_overlap_mwh"]),
                 "simultaneous_interval_energy_net_eur": float(
@@ -156,7 +223,7 @@ def _finalize_rows(
 
 
 def _table_from_rows(rows: list[dict[str, object]], schema: pa.Schema) -> pa.Table:
-    columns = {name: [row[name] for row in rows] for name in PERIOD_SUMMARY_COLUMNS}
+    columns = {name: [row[name] for row in rows] for name in schema.names}
     return pa.table(columns, schema=schema)
 
 
@@ -178,6 +245,18 @@ def build_period_summaries_from_tables(
     pv_self = np.asarray(dispatch.column("pv_to_pump_mw").to_numpy(), dtype=np.float64)
     pv_export = np.asarray(dispatch.column("pv_export_mw").to_numpy(), dtype=np.float64)
     pv_curtail = np.asarray(dispatch.column("pv_curtail_mw").to_numpy(), dtype=np.float64)
+    wind_enabled = "wind_available_mw" in dispatch.column_names
+    if wind_enabled:
+        wind_rev = np.asarray(dispatch.column("wind_revenue_eur").to_numpy(), dtype=np.float64)
+        wind_available = np.asarray(
+            dispatch.column("wind_available_mw").to_numpy(), dtype=np.float64
+        )
+        wind_self = np.asarray(dispatch.column("wind_to_pump_mw").to_numpy(), dtype=np.float64)
+        wind_export = np.asarray(dispatch.column("wind_export_mw").to_numpy(), dtype=np.float64)
+        wind_curtail = np.asarray(dispatch.column("wind_curtail_mw").to_numpy(), dtype=np.float64)
+    else:
+        zeros = np.zeros(dispatch.num_rows, dtype=np.float64)
+        wind_rev = wind_available = wind_self = wind_export = wind_curtail = zeros
 
     monthly: dict[str, dict[str, float]] = defaultdict(_empty_bucket)
     yearly: dict[int, dict[str, float]] = defaultdict(_empty_bucket)
@@ -196,6 +275,11 @@ def build_period_summaries_from_tables(
             pv_self=float(pv_self[i]),
             pv_export=float(pv_export[i]),
             pv_curtail=float(pv_curtail[i]),
+            wind_rev=float(wind_rev[i]),
+            wind_available=float(wind_available[i]),
+            wind_self=float(wind_self[i]),
+            wind_export=float(wind_export[i]),
+            wind_curtail=float(wind_curtail[i]),
         )
         _add_interval(monthly[month], **kwargs)
         _add_interval(yearly[year], **kwargs)
@@ -212,10 +296,12 @@ def build_period_summaries_from_tables(
             monthly[brussels_month_key(stamp)]["capacity_revenue_eur"] += float(revenue)
             yearly[brussels_year_key(stamp)]["capacity_revenue_eur"] += float(revenue)
 
+    monthly_schema = MONTHLY_SUMMARY_SCHEMA_V3 if wind_enabled else MONTHLY_SUMMARY_SCHEMA
+    yearly_schema = YEARLY_SUMMARY_SCHEMA_V3 if wind_enabled else YEARLY_SUMMARY_SCHEMA
     monthly_rows = _finalize_rows(monthly, float(e_max_mwh), period_as_int=False)
     yearly_rows = _finalize_rows(yearly, float(e_max_mwh), period_as_int=True)
-    return _table_from_rows(monthly_rows, MONTHLY_SUMMARY_SCHEMA), _table_from_rows(
-        yearly_rows, YEARLY_SUMMARY_SCHEMA
+    return _table_from_rows(monthly_rows, monthly_schema), _table_from_rows(
+        yearly_rows, yearly_schema
     )
 
 

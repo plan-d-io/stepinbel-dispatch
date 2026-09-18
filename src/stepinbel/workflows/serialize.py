@@ -29,8 +29,10 @@ from stepinbel.workflows.constants import (
     BEHAVIOURAL_BASELINE,
     CASE_RUN_REQUEST_SCHEMA_VERSION,
     CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
+    CASE_RUN_REQUEST_SCHEMA_VERSION_V3,
     RUN_ARTIFACT_SCHEMA_VERSION,
     RUN_ARTIFACT_SCHEMA_VERSION_V2,
+    RUN_ARTIFACT_SCHEMA_VERSION_V3,
     SUPPORTED_CASE_SCHEMA_VERSIONS,
 )
 from stepinbel.workflows.errors import RunRequestError
@@ -114,6 +116,8 @@ def require_schema_version(value: object, allowed: frozenset[int], field: str) -
 
 
 def preferred_case_schema_versions(config: SimulationConfig) -> tuple[int, int]:
+    if config.wind_enabled():
+        return CASE_RUN_REQUEST_SCHEMA_VERSION_V3, RUN_ARTIFACT_SCHEMA_VERSION_V3
     if config.machine_commitment.physically_active():
         return CASE_RUN_REQUEST_SCHEMA_VERSION_V2, RUN_ARTIFACT_SCHEMA_VERSION_V2
     return CASE_RUN_REQUEST_SCHEMA_VERSION, RUN_ARTIFACT_SCHEMA_VERSION
@@ -131,6 +135,13 @@ def require_matching_case_schema_versions(request_version: int, artifact_version
         if artifact_version != RUN_ARTIFACT_SCHEMA_VERSION_V2:
             raise RunRequestError(
                 "schema-v2 requests must use artifact schema version 2",
+                category="invalid_request",
+            )
+        return
+    if request_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V3:
+        if artifact_version != RUN_ARTIFACT_SCHEMA_VERSION_V3:
+            raise RunRequestError(
+                "schema-v3 requests must use artifact schema version 3",
                 category="invalid_request",
             )
         return
@@ -468,10 +479,17 @@ _SITE_KEYS = (
     "pv_revenue_mode",
     "pv_fixed_price_eur_mwh",
 )
+_SITE_KEYS_V3 = (
+    *_SITE_KEYS,
+    "wind_capacity_kw",
+    "wind_profile_id",
+    "wind_revenue_mode",
+    "wind_fixed_price_eur_mwh",
+)
 
 
-def serialize_site(site: SiteConfig) -> dict[str, Any]:
-    return {
+def serialize_site(site: SiteConfig, *, schema_version: int) -> dict[str, Any]:
+    payload = {
         "grid_export_mw": None if site.grid_export_mw is None else float(site.grid_export_mw),
         "grid_import_mw": None if site.grid_import_mw is None else float(site.grid_import_mw),
         "pv_ac_kw": float(site.pv_ac_kw),
@@ -481,25 +499,50 @@ def serialize_site(site: SiteConfig) -> dict[str, Any]:
             None if site.pv_fixed_price_eur_mwh is None else float(site.pv_fixed_price_eur_mwh)
         ),
     }
+    if schema_version != CASE_RUN_REQUEST_SCHEMA_VERSION_V3:
+        return payload
+    payload["wind_capacity_kw"] = float(site.wind_capacity_kw)
+    payload["wind_profile_id"] = site.wind_profile_id
+    payload["wind_revenue_mode"] = site.wind_revenue_mode
+    payload["wind_fixed_price_eur_mwh"] = (
+        None if site.wind_fixed_price_eur_mwh is None else float(site.wind_fixed_price_eur_mwh)
+    )
+    return payload
 
 
-def deserialize_site(payload: object) -> SiteConfig:
+def deserialize_site(payload: object, *, schema_version: int) -> SiteConfig:
     body = require_mapping(payload, "site")
-    require_keys(body, _SITE_KEYS, "site")
+    keys = _SITE_KEYS_V3 if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V3 else _SITE_KEYS
+    require_keys(body, keys, "site")
     region = body["pv_region"]
     if region is not None and not isinstance(region, str):
         raise RunRequestError("pv_region must be a string or null", category="invalid_request")
-    try:
-        return SiteConfig(
-            grid_export_mw=require_optional_finite(body["grid_export_mw"], "grid_export_mw"),
-            grid_import_mw=require_optional_finite(body["grid_import_mw"], "grid_import_mw"),
-            pv_ac_kw=require_finite(body["pv_ac_kw"], "pv_ac_kw"),
-            pv_region=region,
-            pv_revenue_mode=require_str(body["pv_revenue_mode"], "pv_revenue_mode"),  # type: ignore[arg-type]
-            pv_fixed_price_eur_mwh=require_optional_finite(
-                body["pv_fixed_price_eur_mwh"], "pv_fixed_price_eur_mwh"
-            ),
+    kwargs: dict[str, Any] = {
+        "grid_export_mw": require_optional_finite(body["grid_export_mw"], "grid_export_mw"),
+        "grid_import_mw": require_optional_finite(body["grid_import_mw"], "grid_import_mw"),
+        "pv_ac_kw": require_finite(body["pv_ac_kw"], "pv_ac_kw"),
+        "pv_region": region,
+        "pv_revenue_mode": require_str(body["pv_revenue_mode"], "pv_revenue_mode"),
+        "pv_fixed_price_eur_mwh": require_optional_finite(
+            body["pv_fixed_price_eur_mwh"], "pv_fixed_price_eur_mwh"
+        ),
+    }
+    if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V3:
+        profile = body["wind_profile_id"]
+        if profile is not None and not isinstance(profile, str):
+            raise RunRequestError(
+                "wind_profile_id must be a string or null", category="invalid_request"
+            )
+        kwargs["wind_capacity_kw"] = require_finite(body["wind_capacity_kw"], "wind_capacity_kw")
+        kwargs["wind_profile_id"] = profile
+        kwargs["wind_revenue_mode"] = require_str(
+            body["wind_revenue_mode"], "wind_revenue_mode"
         )
+        kwargs["wind_fixed_price_eur_mwh"] = require_optional_finite(
+            body["wind_fixed_price_eur_mwh"], "wind_fixed_price_eur_mwh"
+        )
+    try:
+        return SiteConfig(**kwargs)
     except ConfigError as exc:
         raise RunRequestError(str(exc), category="invalid_configuration") from exc
 
@@ -543,18 +586,31 @@ def serialize_config(config: SimulationConfig, *, schema_version: int) -> dict[s
         "period": serialize_period(config.period),
         "market_case": serialize_market_case(config.market_case),
         "asset": serialize_asset(config.asset),
-        "site": serialize_site(config.site),
+        "site": serialize_site(config.site, schema_version=schema_version),
     }
+    if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION:
+        if config.machine_commitment.physically_active():
+            raise RunRequestError(
+                "schema-v1 requests cannot represent enabled machine-commitment options",
+                category="invalid_request",
+            )
+        if config.wind_enabled():
+            raise RunRequestError(
+                "schema-v1 requests cannot represent enabled co-located wind",
+                category="invalid_request",
+            )
+        return payload
     if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2:
+        if config.wind_enabled():
+            raise RunRequestError(
+                "schema-v2 requests cannot represent enabled co-located wind",
+                category="invalid_request",
+            )
         payload["machine_commitment"] = serialize_machine_commitment(config.machine_commitment)
         return payload
-    if schema_version != CASE_RUN_REQUEST_SCHEMA_VERSION:
+    if schema_version != CASE_RUN_REQUEST_SCHEMA_VERSION_V3:
         raise RunRequestError("request_schema_version is not supported", category="invalid_request")
-    if config.machine_commitment.physically_active():
-        raise RunRequestError(
-            "schema-v1 requests cannot represent enabled machine-commitment options",
-            category="invalid_request",
-        )
+    payload["machine_commitment"] = serialize_machine_commitment(config.machine_commitment)
     return payload
 
 
@@ -563,7 +619,10 @@ def deserialize_config(payload: object, *, schema_version: int) -> SimulationCon
     if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION:
         require_keys(body, ("period", "market_case", "asset", "site"), "config")
         commitment = MachineCommitmentConfig()
-    elif schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2:
+    elif schema_version in {
+        CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
+        CASE_RUN_REQUEST_SCHEMA_VERSION_V3,
+    }:
         require_keys(
             body,
             ("period", "market_case", "asset", "site", "machine_commitment"),
@@ -577,7 +636,7 @@ def deserialize_config(payload: object, *, schema_version: int) -> SimulationCon
             period=deserialize_period(body["period"]),
             market_case=deserialize_market_case(body["market_case"]),
             asset=deserialize_asset(body["asset"]),
-            site=deserialize_site(body["site"]),
+            site=deserialize_site(body["site"], schema_version=schema_version),
             machine_commitment=commitment,
         )
     except ConfigError as exc:
@@ -592,7 +651,10 @@ def serialize_solver_options(options: SolverOptions, *, schema_version: int) -> 
     payload = {"detailed_output": bool(options.detailed_output)}
     if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION:
         return payload
-    if schema_version != CASE_RUN_REQUEST_SCHEMA_VERSION_V2:
+    if schema_version not in {
+        CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
+        CASE_RUN_REQUEST_SCHEMA_VERSION_V3,
+    }:
         raise RunRequestError("request_schema_version is not supported", category="invalid_request")
     payload["mip_rel_gap"] = float(options.mip_rel_gap)
     payload["time_limit_s"] = float(options.time_limit_s)
@@ -607,7 +669,10 @@ def deserialize_solver_options(payload: object, *, schema_version: int) -> Solve
             return SolverOptions(
                 detailed_output=require_bool(body["detailed_output"], "detailed_output")
             )
-        if schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2:
+        if schema_version in {
+            CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
+            CASE_RUN_REQUEST_SCHEMA_VERSION_V3,
+        }:
             require_keys(body, _SOLVER_OPTIONS_V2_KEYS, "solver_options")
             return SolverOptions(
                 detailed_output=require_bool(body["detailed_output"], "detailed_output"),

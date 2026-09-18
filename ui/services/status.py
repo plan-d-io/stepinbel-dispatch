@@ -8,6 +8,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from stepinbel.reporting import (
+    MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+    MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2,
+    MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V3,
+    RUN_ARTIFACT_SCHEMA_VERSION,
+    RUN_ARTIFACT_SCHEMA_VERSION_V2,
+    RUN_ARTIFACT_SCHEMA_VERSION_V3,
+)
+
 from ui.flow import is_exact_int
 from ui.services.jobs import LAUNCH_FAILED, parse_utc_safe, trusted_job_or_none
 from ui.services.paths import (
@@ -50,9 +59,18 @@ LOG_MAX_LINES = 80
 CONSOLE_MAX_BYTES = 65536
 CONSOLE_MAX_LINES = 80
 
-CASE_ARTIFACT_SCHEMA = 1
-COMPARISON_ARTIFACT_SCHEMA = 1
-SUPPORTED_ARTIFACT_SCHEMAS = frozenset({1, 2})
+CASE_ARTIFACT_SCHEMA = RUN_ARTIFACT_SCHEMA_VERSION
+COMPARISON_ARTIFACT_SCHEMA = MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION
+SUPPORTED_STATUS_ARTIFACT_SCHEMAS = frozenset(
+    {
+        RUN_ARTIFACT_SCHEMA_VERSION,
+        RUN_ARTIFACT_SCHEMA_VERSION_V2,
+        RUN_ARTIFACT_SCHEMA_VERSION_V3,
+        MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
+        MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2,
+        MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V3,
+    }
+)
 
 STAGE_LABELS = {
     "validate_request": "Validating request",
@@ -124,7 +142,7 @@ def trusted_status(job: Mapping[str, Any], payload: Mapping[str, Any] | None) ->
     if state not in CORE_SUPPORTED:
         return None
     version = payload.get("artifact_schema_version")
-    if type(version) is not int or version not in SUPPORTED_ARTIFACT_SCHEMAS:
+    if type(version) is not int or version not in SUPPORTED_STATUS_ARTIFACT_SCHEMAS:
         return None
     current = payload.get("current_stage")
     if current is not None and not isinstance(current, str):

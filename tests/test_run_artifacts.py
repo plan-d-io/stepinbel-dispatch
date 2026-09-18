@@ -48,7 +48,11 @@ def _replace_column(table: pa.Table, name: str, values) -> pa.Table:
 
 def _rewrite_dispatch(dest: Path, table: pa.Table) -> None:
     pq.write_table(table, dest / "dispatch.parquet")
-    atomic_write_csv(dest / "dispatch.csv", DISPATCH_COLUMNS, _dispatch_csv_rows(table))
+    atomic_write_csv(
+        dest / "dispatch.csv",
+        DISPATCH_COLUMNS,
+        _dispatch_csv_rows(table, DISPATCH_COLUMNS),
+    )
     write_artifact_manifest(dest, _run_id(dest))
 
 

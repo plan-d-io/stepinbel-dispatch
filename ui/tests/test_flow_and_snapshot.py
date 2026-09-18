@@ -119,6 +119,9 @@ def test_default_live_form_values() -> None:
     assert form["grid_follow"] is True
     assert form["grid_common_mw"] == 1.0
     assert form["pv_enabled"] is False
+    assert form["wind_enabled"] is False
+    assert form["wind_capacity_kw"] == 1000.0
+    assert form["wind_profile_id"] == "onshore_belgium"
     assert form["bid_kind"] == "historical"
     assert form["bid_quantile"] == 0.50
     assert form["detailed_solver"] is False
@@ -240,6 +243,8 @@ def test_live_pv_and_fixed_price_validation() -> None:
     snapshot = build_snapshot(on, demo=False)
     assert snapshot["site"]["pv_ac_kw"] == 500.0
     assert snapshot["site"]["pv_region"] == "Belgium"
+    flanders = _form(pv_enabled=True, pv_ac_kw=500.0, pv_region="Flanders")
+    assert build_snapshot(flanders, demo=False)["site"]["pv_region"] == "Flanders"
     missing = _form(pv_enabled=True, pv_revenue_mode="fixed", pv_fixed_price=None)
     assert lightweight_continue_reason(missing) is not None
     priced = _form(pv_enabled=True, pv_revenue_mode="fixed", pv_fixed_price=42.0)

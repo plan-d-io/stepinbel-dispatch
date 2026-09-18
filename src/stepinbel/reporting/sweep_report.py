@@ -67,6 +67,7 @@ def render_asset_sweep_report(
     child = request.case_requests[request.candidate_order[0]]
     site = child.config.site
     pv_enabled = child.config.pv_enabled()
+    wind_enabled = child.config.wind_enabled()
     import_mode = grid_import_limit_mode(site)
     export_mode = grid_export_limit_mode(site)
     highest = next(row for row in rows if row.candidate_id == highest_revenue_candidate_id)
@@ -97,28 +98,42 @@ def render_asset_sweep_report(
         "Explicit site limits stay fixed. Otherwise each candidate uses its pump or turbine rating.",
         f"Co-located PV: {_qty(site.pv_ac_kw, 1)} kW AC"
         + (f" ({site.pv_region}, {site.pv_revenue_mode} settlement)" if pv_enabled else ""),
+    ]
+    if wind_enabled:
+        lines.append(
+            f"Co-located wind: {_qty(site.wind_capacity_kw, 1)} kW"
+            f" ({site.wind_profile_id}, {site.wind_revenue_mode} settlement)"
+        )
+    lines.extend(
+        [
         "",
         "Ranked asset configurations",
         "---------------------------",
     ]
+    )
     for row in rows:
-        lines.extend(
+        block = [
+            f"Rank {row.revenue_rank}: {row.candidate_label} ({row.candidate_id})",
+            f"  Pump / turbine: {_qty(row.power_pump_mw)} / {_qty(row.power_turbine_mw)} MW",
+            f"  Usable energy: {_qty(row.usable_energy_mwh)} MWh",
+            (
+                "  Charge / discharge duration: "
+                f"{_qty(row.charge_duration_h)} / {_qty(row.discharge_duration_h)} h"
+            ),
+            f"  Total site revenue: {_money(row.total_site_revenue_eur)} EUR",
+            f"  Market energy net: {_money(row.market_energy_net_eur)} EUR",
+            f"  Capacity revenue: {_money(row.capacity_revenue_eur)} EUR",
+            f"  PV export revenue: {_money(row.pv_revenue_eur)} EUR",
+        ]
+        if wind_enabled:
+            block.append(f"  Wind export revenue: {_money(row.wind_revenue_eur)} EUR")
+        block.extend(
             [
-                f"Rank {row.revenue_rank}: {row.candidate_label} ({row.candidate_id})",
-                f"  Pump / turbine: {_qty(row.power_pump_mw)} / {_qty(row.power_turbine_mw)} MW",
-                f"  Usable energy: {_qty(row.usable_energy_mwh)} MWh",
-                (
-                    "  Charge / discharge duration: "
-                    f"{_qty(row.charge_duration_h)} / {_qty(row.discharge_duration_h)} h"
-                ),
-                f"  Total site revenue: {_money(row.total_site_revenue_eur)} EUR",
-                f"  Market energy net: {_money(row.market_energy_net_eur)} EUR",
-                f"  Capacity revenue: {_money(row.capacity_revenue_eur)} EUR",
-                f"  PV export revenue: {_money(row.pv_revenue_eur)} EUR",
                 f"  Difference from highest: {_money(row.difference_from_highest_eur)} EUR",
                 f"  Full cycles: {_qty(row.full_cycles)}",
             ]
         )
+        lines.extend(block)
     if pv_enabled:
         lines.extend(
             [
@@ -137,6 +152,34 @@ def render_asset_sweep_report(
                 )
             )
         lines.append("Self-consumed PV has no separate revenue line; it lowers grid charging cost.")
+    if wind_enabled:
+        lines.extend(
+            [
+                "",
+                "Wind",
+                "----",
+            ]
+        )
+        for row in rows:
+            lines.append(
+                (
+                    f"{row.candidate_id}: available {_qty(row.wind_available_mwh)} MWh, "
+                    f"self-consumed {_qty(row.wind_self_consumed_mwh)} MWh, "
+                    f"exported {_qty(row.wind_exported_mwh)} MWh, "
+                    f"curtailed {_qty(row.wind_curtailed_mwh)} MWh"
+                )
+            )
+        lines.append("Self-consumed wind has no separate revenue line; it lowers grid charging cost.")
+        if site.wind_revenue_mode == "da":
+            lines.append("Day-ahead wind settlement uses day-ahead prices in every market case.")
+        else:
+            lines.append("Wind exports settle at the configured fixed price.")
+        if pv_enabled:
+            lines.append(
+                "When PV and wind export prices are equal and a shared constraint binds, "
+                "the source-specific split may be non-unique. Total routing and total site "
+                "revenue remain authoritative."
+            )
     lines.extend(
         [
             "",

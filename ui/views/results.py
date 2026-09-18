@@ -55,6 +55,8 @@ def _header_items(header: Mapping[str, Any]) -> list[tuple[str, str]]:
         ("Grid connection", str(header["grid"])),
         ("PV", str(header["pv"])),
     ]
+    if header.get("wind"):
+        items.append(("Wind", str(header["wind"])))
     if header.get("balancing"):
         items.append(("Balancing strategy", str(header["balancing"])))
     if header.get("run_type"):

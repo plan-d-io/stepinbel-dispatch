@@ -110,20 +110,20 @@ def test_published_coverage_uses_inclusive_last_qh_and_delivery_dates(
     coverage = coverage_from_bundle(open_published_bundle(data_root))
     assert coverage.da_prices.start_utc == datetime(2015, 1, 4, 23, 0, tzinfo=timezone.utc)
     assert coverage.da_prices.end_exclusive_utc == datetime(
-        2026, 7, 13, 22, 0, tzinfo=timezone.utc
+        2026, 9, 18, 22, 0, tzinfo=timezone.utc
     )
     assert coverage.da_prices.last_interval_start_utc == datetime(
-        2026, 7, 13, 21, 45, tzinfo=timezone.utc
+        2026, 9, 18, 21, 45, tzinfo=timezone.utc
     )
     assert coverage.balancing.start_utc == datetime(2024, 5, 21, 22, 0, tzinfo=timezone.utc)
     assert coverage.balancing.end_exclusive_utc == datetime(
-        2026, 8, 13, 22, 0, tzinfo=timezone.utc
+        2026, 9, 16, 22, 0, tzinfo=timezone.utc
     )
     assert coverage.mfrr_capacity.start_utc == datetime(
         2020, 12, 31, 23, 0, tzinfo=timezone.utc
     )
     assert coverage.mfrr_capacity.end_exclusive_utc == datetime(
-        2026, 8, 15, 22, 0, tzinfo=timezone.utc
+        2026, 9, 18, 22, 0, tzinfo=timezone.utc
     )
     assert coverage.afrr_capacity.start_utc == datetime(
         2022, 5, 3, 22, 0, tzinfo=timezone.utc
@@ -131,6 +131,17 @@ def test_published_coverage_uses_inclusive_last_qh_and_delivery_dates(
     assert coverage.pv.start_utc == datetime(2020, 7, 31, 22, 0, tzinfo=timezone.utc)
     assert "Belgium" in coverage.pv_regions
     assert coverage.pv_regions == tuple(coverage.pv_regions)
+    assert coverage.wind is not None
+    assert coverage.wind.start_utc == datetime(2019, 12, 31, 23, 0, tzinfo=timezone.utc)
+    assert coverage.wind.end_exclusive_utc == datetime(
+        2026, 9, 16, 22, 0, tzinfo=timezone.utc
+    )
+    assert coverage.wind_profiles == (
+        "onshore_belgium",
+        "onshore_flanders",
+        "onshore_wallonia",
+        "offshore_belgium",
+    )
 
 
 def test_required_source_sets(data_root) -> None:
@@ -176,7 +187,7 @@ def test_request_outside_coverage_names_binding_source_and_windows(data_root) ->
         resolve_period(bundle, SimulationConfig(period=period, market_case=MFRRCase()))
     message = str(caught.value)
     assert "[2020-01-01T00:00:00Z, 2020-01-01T01:00:00Z)" in message
-    assert "[2024-05-21T22:00:00Z, 2026-08-13T22:00:00Z)" in message
+    assert "[2024-05-21T22:00:00Z, 2026-09-16T22:00:00Z)" in message
     assert "clip" not in message.lower()
 
 
@@ -191,8 +202,8 @@ def test_one_quarter_hour_end_overshoot_fails(data_root) -> None:
         resolve_period(
             bundle, SimulationConfig(period=overshoot, market_case=DayAheadCase())
         )
-    assert "2026-07-13T22:00:00Z" in str(caught.value)
-    assert "2026-07-13T22:15:00Z" in str(caught.value)
+    assert "2026-09-18T22:00:00Z" in str(caught.value)
+    assert "2026-09-18T22:15:00Z" in str(caught.value)
 
 
 def test_pv_region_matching(data_root) -> None:

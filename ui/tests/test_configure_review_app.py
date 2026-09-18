@@ -58,6 +58,7 @@ def test_default_live_configure_composition() -> None:
     assert _number(at, "Common rating (MW)").value == 1.0
     assert "4.444 MWh" in _text(at)
     assert _checkbox(at, "Include co-located PV").value is False
+    assert _checkbox(at, "Include co-located wind").value is False
     assert _button(at, "1  Configure").disabled is True
     assert _button(at, "2  Review & run").disabled is True
     assert _button(at, "3  Results").disabled is True
@@ -144,6 +145,9 @@ def test_demo_controls_are_read_only_and_open_review() -> None:
         box = _checkbox(at, label)
         assert box.value is True
         assert box.disabled is True
+    wind = _checkbox(at, "Include co-located wind")
+    assert wind.value is False
+    assert wind.disabled is True
     assert _number(at, "Common rating (MW)").disabled is True
     assert _number(at, "Common rating (MW)").value == 1.0
     assert _number(at, "Installed PV (kW)").value == 500.0
@@ -273,11 +277,11 @@ def test_conditional_configure_choices_survive_stepper_return() -> None:
     assert form["bid_kind"] == "fixed"
 
 
-def test_advanced_section_follows_pv() -> None:
+def test_advanced_section_follows_wind() -> None:
     at = AppTest.from_file(str(APP), default_timeout=30)
     at.run()
     headings = [item.value for item in at.subheader]
-    assert headings.index("PV") < headings.index("Advanced")
+    assert headings.index("PV") < headings.index("Wind") < headings.index("Advanced")
     labels = [item.label for item in at.expander]
     assert "Machine operating constraints" not in labels
     assert "Advanced asset assumptions" in labels
@@ -288,7 +292,10 @@ def test_advanced_section_follows_pv() -> None:
     )
     asset_idx = source.index('with st.expander("Advanced asset assumptions"')
     constraint_idx = source.index("st.markdown(f\"**{COMMITMENT_EXPANDER}**\")")
+    pv_idx = source.index('render_section_heading("PV")')
+    wind_idx = source.index('render_section_heading("Wind")')
     advanced_idx = source.index('render_section_heading("Advanced")')
+    assert pv_idx < wind_idx < advanced_idx
     assert asset_idx < constraint_idx < advanced_idx
 
 

@@ -23,6 +23,7 @@ from stepinbel.config import (
     PvRevenueMode,
     SimulationConfig,
     SiteConfig,
+    WindRevenueMode,
     StorageHoursBasis,
     UtcPeriod,
 )
@@ -143,6 +144,34 @@ def test_pv_region_and_fixed_price_validation() -> None:
     assert SimulationConfig(period=_utc_day(), market_case=DayAheadCase()).pv_enabled() is False
 
 
+def test_wind_profile_and_fixed_price_validation() -> None:
+    with pytest.raises(ConfigError, match="wind_profile_id"):
+        SiteConfig(wind_capacity_kw=500.0, wind_profile_id=None)
+    with pytest.raises(ConfigError, match="wind_fixed_price_eur_mwh"):
+        SiteConfig(wind_revenue_mode="fixed")
+    with pytest.raises(ConfigError, match="wind_capacity_kw"):
+        SiteConfig(wind_capacity_kw=-1.0)
+    allowed = SiteConfig(
+        wind_capacity_kw=100.0,
+        wind_profile_id="onshore_belgium",
+        wind_revenue_mode="fixed",
+        wind_fixed_price_eur_mwh=-12.5,
+    )
+    assert allowed.wind_fixed_price_eur_mwh == -12.5
+    config = SimulationConfig(
+        period=_utc_day(),
+        market_case=DayAheadCase(),
+        site=allowed,
+    )
+    assert config.wind_enabled() is True
+    default = SimulationConfig(period=_utc_day(), market_case=DayAheadCase())
+    assert default.wind_enabled() is False
+    assert default.site.wind_capacity_kw == 0.0
+    assert default.site.wind_profile_id == "onshore_belgium"
+    assert default.site.wind_revenue_mode == "da"
+    assert default.site.wind_fixed_price_eur_mwh is None
+
+
 def test_fixed_capacity_prices_must_be_non_negative() -> None:
     assert FixedMinimumCapacityBid(upward_price_eur_mw_h=0.0).upward_price_eur_mw_h == 0.0
     assert FixedMinimumCapacityBid(1.25).upward_price_eur_mw_h == 1.25
@@ -247,6 +276,7 @@ def test_exported_type_aliases_exist() -> None:
     assert MarketCase
     assert Period
     assert PvRevenueMode
+    assert WindRevenueMode
     assert StorageHoursBasis
 
 

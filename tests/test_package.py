@@ -28,9 +28,9 @@ FORBIDDEN_IMPORT_ROOTS = {
 
 def test_public_version_matches_version_file_and_metadata() -> None:
     file_version = VERSION_FILE.read_text(encoding="utf-8").strip()
-    assert stepinbel.__version__ == "0.2.0"
-    assert file_version == "0.2.0"
-    assert importlib.metadata.version("stepinbel") == "0.2.0"
+    assert stepinbel.__version__ == "0.3.0"
+    assert file_version == "0.3.0"
+    assert importlib.metadata.version("stepinbel") == "0.3.0"
 
 
 def test_requires_python_313() -> None:
@@ -206,16 +206,19 @@ WORKFLOW_PUBLIC_EXPORTS = [
 REPORTING_PUBLIC_EXPORTS = [
     "RUN_ARTIFACT_SCHEMA_VERSION",
     "RUN_ARTIFACT_SCHEMA_VERSION_V2",
+    "RUN_ARTIFACT_SCHEMA_VERSION_V3",
     "ArtifactError",
     "build_period_summaries",
     "render_run_report",
     "validate_run_artifacts",
     "MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION",
     "MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2",
+    "MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V3",
     "render_market_comparison_report",
     "validate_market_comparison_artifacts",
     "ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION",
     "ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION_V2",
+    "ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION_V3",
     "render_asset_sweep_report",
     "validate_asset_sweep_artifacts",
 ]
@@ -246,7 +249,7 @@ def test_import_stepinbel_does_not_import_highspy() -> None:
         "assert 'highspy' not in sys.modules\n"
         "assert 'numpy' not in sys.modules\n"
         "assert 'pyarrow' not in sys.modules\n"
-        "assert stepinbel.__version__ == '0.2.0'\n"
+        "assert stepinbel.__version__ == '0.3.0'\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", script],

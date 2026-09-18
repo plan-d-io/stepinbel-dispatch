@@ -28,8 +28,77 @@ PV_VALUATION_LABELS = {
     PV_MODE_DA: "Day-ahead prices",
     PV_MODE_FIXED: "Fixed price",
 }
+WIND_MODE_DA = "da"
+WIND_MODE_FIXED = "fixed"
+WIND_VALUATION_LABELS = {
+    WIND_MODE_DA: "Day-ahead prices",
+    WIND_MODE_FIXED: "Fixed price",
+}
+WIND_PROFILE_ONSHORE_BELGIUM = "onshore_belgium"
+WIND_PROFILE_OFFSHORE_BELGIUM = "offshore_belgium"
+WIND_PROFILE_ONSHORE_FLANDERS = "onshore_flanders"
+WIND_PROFILE_ONSHORE_WALLONIA = "onshore_wallonia"
+WIND_PROFILE_LABELS = {
+    WIND_PROFILE_ONSHORE_BELGIUM: "Onshore Belgium",
+    WIND_PROFILE_OFFSHORE_BELGIUM: "Offshore Belgium",
+    WIND_PROFILE_ONSHORE_FLANDERS: "Onshore Flanders",
+    WIND_PROFILE_ONSHORE_WALLONIA: "Onshore Wallonia",
+}
+WIND_PROFILE_ORDER = (
+    WIND_PROFILE_ONSHORE_BELGIUM,
+    WIND_PROFILE_OFFSHORE_BELGIUM,
+    WIND_PROFILE_ONSHORE_FLANDERS,
+    WIND_PROFILE_ONSHORE_WALLONIA,
+)
+DEFAULT_WIND_CAPACITY_KW = 1000.0
+PV_REGION_BELGIUM = "Belgium"
+PV_REGION_LABELS = {
+    "Belgium": "Belgium",
+    "Flanders": "Flanders",
+    "Wallonia": "Wallonia",
+    "Brussels": "Brussels",
+    "Antwerp": "Antwerp",
+    "East-Flanders": "East Flanders",
+    "Flemish-Brabant": "Flemish Brabant",
+    "Limburg": "Limburg",
+    "West-Flanders": "West Flanders",
+    "Hainaut": "Hainaut",
+    "Liège": "Liège",
+    "Luxembourg": "Luxembourg",
+    "Namur": "Namur",
+    "Walloon-Brabant": "Walloon Brabant",
+}
+PV_REGION_ORDER = tuple(PV_REGION_LABELS)
 STORAGE_HOURS = "hours"
 STORAGE_POND = "pond"
+
+
+def resolve_form_pv_region(value: object, *, default_unknown: bool = False) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return PV_REGION_BELGIUM
+    text = value.strip()
+    if text in PV_REGION_LABELS:
+        return text
+    folded = text.casefold()
+    matches = [
+        key
+        for key, label in PV_REGION_LABELS.items()
+        if key.casefold() == folded or label.casefold() == folded
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if default_unknown:
+        return PV_REGION_BELGIUM
+    return text
+
+
+def pv_region_label(value: object) -> str:
+    stored = resolve_form_pv_region(value, default_unknown=True)
+    return PV_REGION_LABELS[stored]
+
+
+def pv_region_value(label: object) -> str:
+    return resolve_form_pv_region(label, default_unknown=True)
 
 
 def is_missing_number(value: object) -> bool:
@@ -96,8 +165,14 @@ def default_live_form() -> dict[str, Any]:
         "grid_export_mw": rating,
         "pv_enabled": False,
         "pv_ac_kw": 500.0,
+        "pv_region": PV_REGION_BELGIUM,
         "pv_revenue_mode": PV_MODE_DA,
         "pv_fixed_price": None,
+        "wind_enabled": False,
+        "wind_capacity_kw": DEFAULT_WIND_CAPACITY_KW,
+        "wind_profile_id": WIND_PROFILE_ONSHORE_BELGIUM,
+        "wind_revenue_mode": WIND_MODE_DA,
+        "wind_fixed_price": None,
         "bid_kind": BID_HISTORICAL,
         "bid_quantile": 0.50,
         "capacity_coverage_hours": 4.0,
@@ -213,6 +288,7 @@ def apply_form_transitions(
         form["grid_common_mw"] = suggested
         form["grid_import_mw"] = suggested
         form["grid_export_mw"] = suggested
+    form["pv_region"] = resolve_form_pv_region(form.get("pv_region"), default_unknown=True)
     return form
 
 

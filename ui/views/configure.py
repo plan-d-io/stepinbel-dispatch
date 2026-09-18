@@ -40,6 +40,8 @@ from ui.presentation.tokens import (
     PV_HELP_OFF,
     PV_HELP_ON,
     SOLVER_LOG_COPY,
+    WIND_HELP_OFF,
+    WIND_HELP_ON,
 )
 from ui.services.commitment import (
     COMMITMENT_EXPANDER,
@@ -68,13 +70,23 @@ from ui.services.form import (
     PRESET_CUSTOM,
     PV_MODE_DA,
     PV_MODE_FIXED,
+    PV_REGION_LABELS,
+    PV_REGION_ORDER,
     PV_VALUATION_LABELS,
     STORAGE_HOURS,
     STORAGE_POND,
+    WIND_MODE_DA,
+    WIND_MODE_FIXED,
+    WIND_PROFILE_LABELS,
+    WIND_PROFILE_ONSHORE_BELGIUM,
+    WIND_PROFILE_ORDER,
+    WIND_VALUATION_LABELS,
     apply_form_transitions,
     coalesce_float,
     default_live_form,
     grid_override_help,
+    pv_region_label,
+    pv_region_value,
     selected_markets,
     suggested_grid_mw,
 )
@@ -116,8 +128,14 @@ _KEYS = {
     "grid_export_mw": f"{WIDGET_PREFIX}grid-out",
     "pv_enabled": f"{WIDGET_PREFIX}pv",
     "pv_ac_kw": f"{WIDGET_PREFIX}pv-kw",
+    "pv_region": f"{WIDGET_PREFIX}pv-region",
     "pv_revenue_mode": f"{WIDGET_PREFIX}pv-val",
     "pv_fixed_price": f"{WIDGET_PREFIX}pv-price",
+    "wind_enabled": f"{WIDGET_PREFIX}wind",
+    "wind_capacity_kw": f"{WIDGET_PREFIX}wind-kw",
+    "wind_profile_id": f"{WIDGET_PREFIX}wind-profile",
+    "wind_revenue_mode": f"{WIDGET_PREFIX}wind-val",
+    "wind_fixed_price": f"{WIDGET_PREFIX}wind-price",
     "bid_kind": f"{WIDGET_PREFIX}bid-kind",
     "bid_quantile": f"{WIDGET_PREFIX}quantile",
     "capacity_coverage_hours": f"{WIDGET_PREFIX}cover",
@@ -164,6 +182,29 @@ def _pv_label(value: object) -> str:
     return PV_VALUATION_LABELS.get(str(value), PV_VALUATION_LABELS[PV_MODE_DA])
 
 
+def _pv_region_label(value: object) -> str:
+    return pv_region_label(value)
+
+
+def _pv_region_value(label: str) -> str:
+    return pv_region_value(label)
+
+
+def _wind_profile_label(value: object) -> str:
+    return WIND_PROFILE_LABELS.get(str(value), WIND_PROFILE_LABELS[WIND_PROFILE_ONSHORE_BELGIUM])
+
+
+def _wind_profile_value(label: str) -> str:
+    for key, text in WIND_PROFILE_LABELS.items():
+        if text == label:
+            return key
+    return WIND_PROFILE_ONSHORE_BELGIUM
+
+
+def _wind_label(value: object) -> str:
+    return WIND_VALUATION_LABELS.get(str(value), WIND_VALUATION_LABELS[WIND_MODE_DA])
+
+
 def _widget_values(form: Mapping[str, Any]) -> dict[str, Any]:
     return {
         _KEYS["market_da"]: bool(form.get("market_da")),
@@ -197,8 +238,14 @@ def _widget_values(form: Mapping[str, Any]) -> dict[str, Any]:
         _KEYS["grid_export_mw"]: coalesce_float(form.get("grid_export_mw"), 1.0),
         _KEYS["pv_enabled"]: bool(form.get("pv_enabled")),
         _KEYS["pv_ac_kw"]: coalesce_float(form.get("pv_ac_kw"), 500.0),
+        _KEYS["pv_region"]: _pv_region_label(form.get("pv_region")),
         _KEYS["pv_revenue_mode"]: _pv_label(form.get("pv_revenue_mode")),
         _KEYS["pv_fixed_price"]: coalesce_float(form.get("pv_fixed_price"), 0.0),
+        _KEYS["wind_enabled"]: bool(form.get("wind_enabled")),
+        _KEYS["wind_capacity_kw"]: coalesce_float(form.get("wind_capacity_kw"), 1000.0),
+        _KEYS["wind_profile_id"]: _wind_profile_label(form.get("wind_profile_id")),
+        _KEYS["wind_revenue_mode"]: _wind_label(form.get("wind_revenue_mode")),
+        _KEYS["wind_fixed_price"]: coalesce_float(form.get("wind_fixed_price"), 0.0),
         _KEYS["bid_kind"]: _bid_label(form.get("bid_kind")),
         _KEYS["bid_quantile"]: coalesce_float(form.get("bid_quantile"), 0.50),
         _KEYS["capacity_coverage_hours"]: coalesce_float(form.get("capacity_coverage_hours"), 4.0),
@@ -275,6 +322,9 @@ def _collect(previous: Mapping[str, Any]) -> dict[str, Any]:
     form["grid_follow"] = bool(previous.get("grid_follow", True))
     form["pv_enabled"] = bool(st.session_state.get(_KEYS["pv_enabled"]))
     form["pv_ac_kw"] = coalesce_float(st.session_state.get(_KEYS["pv_ac_kw"]), 0.0)
+    form["pv_region"] = _pv_region_value(
+        str(st.session_state.get(_KEYS["pv_region"]) or _pv_region_label(previous.get("pv_region")))
+    )
     form["pv_revenue_mode"] = (
         PV_MODE_FIXED
         if st.session_state.get(_KEYS["pv_revenue_mode"]) == PV_VALUATION_LABELS[PV_MODE_FIXED]
@@ -282,6 +332,21 @@ def _collect(previous: Mapping[str, Any]) -> dict[str, Any]:
     )
     if form["pv_revenue_mode"] == PV_MODE_FIXED:
         form["pv_fixed_price"] = coalesce_float(st.session_state.get(_KEYS["pv_fixed_price"]), 0.0)
+    form["wind_enabled"] = bool(st.session_state.get(_KEYS["wind_enabled"]))
+    form["wind_capacity_kw"] = coalesce_float(
+        st.session_state.get(_KEYS["wind_capacity_kw"], previous.get("wind_capacity_kw")),
+        1000.0,
+    )
+    form["wind_profile_id"] = _wind_profile_value(
+        str(st.session_state.get(_KEYS["wind_profile_id"]) or _wind_profile_label(previous.get("wind_profile_id")))
+    )
+    form["wind_revenue_mode"] = (
+        WIND_MODE_FIXED
+        if st.session_state.get(_KEYS["wind_revenue_mode"]) == WIND_VALUATION_LABELS[WIND_MODE_FIXED]
+        else WIND_MODE_DA
+    )
+    if form["wind_revenue_mode"] == WIND_MODE_FIXED:
+        form["wind_fixed_price"] = coalesce_float(st.session_state.get(_KEYS["wind_fixed_price"]), 0.0)
     form["bid_kind"] = (
         BID_FIXED if st.session_state.get(_KEYS["bid_kind"]) == "Fixed minimum prices" else BID_HISTORICAL
     )
@@ -401,11 +466,12 @@ def render_configure(state: dict[str, Any]) -> None:
                 end = latest_inclusive_end(
                     live_markets,
                     pv_enabled=bool(st.session_state.get(_KEYS["pv_enabled"])),
+                    wind_enabled=bool(st.session_state.get(_KEYS["wind_enabled"])),
                     year=2026,
                 )
                 st.caption(
                     "Latest completely covered Belgian delivery date for the selected "
-                    f"markets and PV: {end.isoformat()}."
+                    f"markets, PV, and wind: {end.isoformat()}."
                 )
             except Exception as exc:
                 st.caption(str(exc))
@@ -546,16 +612,31 @@ def render_configure(state: dict[str, Any]) -> None:
     render_section_heading("PV")
     st.checkbox("Include co-located PV", disabled=disabled, key=_KEYS["pv_enabled"])
     if st.session_state.get(_KEYS["pv_enabled"]):
+        if form.get("pv_enabled") is not True:
+            previous_capacity = coalesce_float(form.get("pv_ac_kw"), 0.0)
+            st.session_state[_KEYS["pv_ac_kw"]] = (
+                previous_capacity if previous_capacity > 0.0 else 500.0
+            )
+            st.session_state[_KEYS["pv_region"]] = _pv_region_label(form.get("pv_region"))
+            st.session_state[_KEYS["pv_revenue_mode"]] = _pv_label(form.get("pv_revenue_mode"))
+        else:
+            _ensure_session_number(_KEYS["pv_ac_kw"], form.get("pv_ac_kw"), 500.0)
         p1, p2 = st.columns(2)
         with p1:
             st.number_input("Installed PV (kW)", min_value=0.0, disabled=disabled, key=_KEYS["pv_ac_kw"])
         with p2:
             st.selectbox(
-                "Export valuation",
-                tuple(PV_VALUATION_LABELS.values()),
+                "PV region",
+                tuple(PV_REGION_LABELS[item] for item in PV_REGION_ORDER),
                 disabled=disabled,
-                key=_KEYS["pv_revenue_mode"],
+                key=_KEYS["pv_region"],
             )
+        st.selectbox(
+            "Export valuation",
+            tuple(PV_VALUATION_LABELS.values()),
+            disabled=disabled,
+            key=_KEYS["pv_revenue_mode"],
+        )
         if st.session_state.get(_KEYS["pv_revenue_mode"]) == PV_VALUATION_LABELS[PV_MODE_FIXED]:
             st.number_input(
                 "Fixed PV export price (EUR/MWh)",
@@ -565,6 +646,44 @@ def render_configure(state: dict[str, Any]) -> None:
         st.caption(PV_HELP_ON)
     else:
         st.caption(PV_HELP_OFF)
+
+    render_section_heading("Wind")
+    st.checkbox("Include co-located wind", disabled=disabled, key=_KEYS["wind_enabled"])
+    if st.session_state.get(_KEYS["wind_enabled"]):
+        if form.get("wind_enabled") is not True:
+            previous_capacity = coalesce_float(form.get("wind_capacity_kw"), 0.0)
+            st.session_state[_KEYS["wind_capacity_kw"]] = (
+                previous_capacity if previous_capacity > 0.0 else 1000.0
+            )
+            st.session_state[_KEYS["wind_profile_id"]] = _wind_profile_label(form.get("wind_profile_id"))
+            st.session_state[_KEYS["wind_revenue_mode"]] = _wind_label(form.get("wind_revenue_mode"))
+        else:
+            _ensure_session_number(_KEYS["wind_capacity_kw"], form.get("wind_capacity_kw"), 1000.0)
+        w1, w2 = st.columns(2)
+        with w1:
+            st.number_input("Wind capacity (kW)", min_value=0.0, disabled=disabled, key=_KEYS["wind_capacity_kw"])
+        with w2:
+            st.selectbox(
+                "Wind profile",
+                tuple(WIND_PROFILE_LABELS[item] for item in WIND_PROFILE_ORDER),
+                disabled=disabled,
+                key=_KEYS["wind_profile_id"],
+            )
+        st.selectbox(
+            "Export valuation",
+            tuple(WIND_VALUATION_LABELS.values()),
+            disabled=disabled,
+            key=_KEYS["wind_revenue_mode"],
+        )
+        if st.session_state.get(_KEYS["wind_revenue_mode"]) == WIND_VALUATION_LABELS[WIND_MODE_FIXED]:
+            st.number_input(
+                "Fixed wind export price (EUR/MWh)",
+                disabled=disabled,
+                key=_KEYS["wind_fixed_price"],
+            )
+        st.caption(WIND_HELP_ON)
+    else:
+        st.caption(WIND_HELP_OFF)
 
     render_section_heading("Advanced")
     if show_balancing:

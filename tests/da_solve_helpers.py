@@ -55,6 +55,7 @@ def solve_arrays(
     site: SiteConfig | None = None,
     commitments=(),
     pv_load_factor: np.ndarray | None = None,
+    wind_load_factor: np.ndarray | None = None,
     options: SolverOptions | None = None,
     commitment: MachineCommitmentConfig | None = None,
     day_ahead_price: np.ndarray | None = None,
@@ -80,13 +81,19 @@ def solve_arrays(
         site=site or SiteConfig(),
         machine_commitment=commitment or MachineCommitmentConfig(),
     )
-    if config.pv_enabled():
+    if config.pv_enabled() or config.wind_enabled():
+        sources = ["da_prices_qh"]
+        if config.pv_enabled():
+            sources.append("pv_profile_qh")
+        if config.wind_enabled():
+            sources.append("wind_profile_qh")
         resolved = ResolvedPeriod(
             period=resolved.period,
             window=resolved.window,
             market=resolved.market,
-            required_sources=("da_prices_qh", "pv_profile_qh"),
-            pv_region=config.site.pv_region,
+            required_sources=tuple(sources),
+            pv_region=config.site.pv_region if config.pv_enabled() else None,
+            wind_profile_id=config.site.wind_profile_id if config.wind_enabled() else None,
         )
     return solve_from_inputs(
         config=config,
@@ -95,6 +102,7 @@ def solve_arrays(
         timestamps=utc_horizon(n),
         market_inputs=market,
         pv_load_factor=pv_load_factor,
+        wind_load_factor=wind_load_factor,
         options=options,
     )
 

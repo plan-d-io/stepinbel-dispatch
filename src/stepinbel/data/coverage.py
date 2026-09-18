@@ -14,7 +14,7 @@ from stepinbel.config import (
     SimulationConfig,
     UtcPeriod,
 )
-from stepinbel.data.bundle import PublishedDataBundle
+from stepinbel.data.bundle import OPTIONAL_WIND_TABLE, PublishedDataBundle
 
 _QH = timedelta(minutes=15)
 _SOURCE_DA = "da_prices_qh"
@@ -22,6 +22,7 @@ _SOURCE_BALANCING = "balancing_qh"
 _SOURCE_MFRR_CAPACITY = "capacity_blocks.mfrr"
 _SOURCE_AFRR_CAPACITY = "capacity_blocks.afrr"
 _SOURCE_PV = "pv_profile_qh"
+_SOURCE_WIND = OPTIONAL_WIND_TABLE
 
 
 class DataAccessError(Exception):
@@ -93,6 +94,8 @@ class DataCoverage:
     afrr_capacity: UtcWindow
     pv: UtcWindow
     pv_regions: tuple[str, ...]
+    wind: UtcWindow | None
+    wind_profiles: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -104,6 +107,7 @@ class ResolvedPeriod:
     market: Literal["da", "mfrr", "afrr"]
     required_sources: tuple[str, ...]
     pv_region: str | None
+    wind_profile_id: str | None = None
 
 
 def window_from_period(period: Period) -> UtcWindow:
@@ -114,6 +118,11 @@ def window_from_period(period: Period) -> UtcWindow:
 def coverage_from_bundle(bundle: PublishedDataBundle) -> DataCoverage:
     """Parse frozen coverage metadata without mutating the bundle."""
     tables = bundle.coverage
+    wind: UtcWindow | None = None
+    wind_profiles: tuple[str, ...] = ()
+    if _SOURCE_WIND in tables or _SOURCE_WIND in bundle.tables:
+        wind = _qh_coverage(tables, _SOURCE_WIND)
+        wind_profiles = _wind_profiles(tables)
     return DataCoverage(
         da_prices=_qh_coverage(tables, _SOURCE_DA),
         balancing=_qh_coverage(tables, _SOURCE_BALANCING),
@@ -121,6 +130,8 @@ def coverage_from_bundle(bundle: PublishedDataBundle) -> DataCoverage:
         afrr_capacity=_capacity_coverage(tables, "afrr"),
         pv=_qh_coverage(tables, _SOURCE_PV),
         pv_regions=_pv_regions(tables),
+        wind=wind,
+        wind_profiles=wind_profiles,
     )
 
 
@@ -134,6 +145,8 @@ def required_sources(config: SimulationConfig) -> tuple[str, ...]:
         sources.append(_SOURCE_AFRR_CAPACITY)
     if config.pv_enabled():
         sources.append(_SOURCE_PV)
+    if config.wind_enabled():
+        sources.append(_SOURCE_WIND)
     return tuple(sources)
 
 
@@ -151,21 +164,33 @@ def resolve_period(
         _SOURCE_MFRR_CAPACITY: coverage.mfrr_capacity,
         _SOURCE_AFRR_CAPACITY: coverage.afrr_capacity,
         _SOURCE_PV: coverage.pv,
+        _SOURCE_WIND: coverage.wind,
     }
     for source in sources:
-        if source == _SOURCE_PV:
+        if source in {_SOURCE_PV, _SOURCE_WIND}:
             continue
         _require_contained(window, available[source], source)
     pv_region: str | None = None
     if config.pv_enabled():
         _require_contained(window, coverage.pv, _SOURCE_PV)
         pv_region = resolve_pv_region(config.site.pv_region, coverage.pv_regions)
+    wind_profile_id: str | None = None
+    if config.wind_enabled():
+        if coverage.wind is None:
+            raise DataAccessError(
+                "wind_profile_qh is required when wind generation is enabled"
+            )
+        _require_contained(window, coverage.wind, _SOURCE_WIND)
+        wind_profile_id = resolve_wind_profile(
+            config.site.wind_profile_id, coverage.wind_profiles
+        )
     return ResolvedPeriod(
         period=config.period,
         window=window,
         market=config.market,
         required_sources=sources,
         pv_region=pv_region,
+        wind_profile_id=wind_profile_id,
     )
 
 
@@ -184,6 +209,24 @@ def resolve_pv_region(region: str | None, available: tuple[str, ...]) -> str:
         )
     raise DataAccessError(
         f"pv_region {region!r} is not a published region. Available: {list(available)}"
+    )
+
+
+def resolve_wind_profile(profile_id: str | None, available: tuple[str, ...]) -> str:
+    if not isinstance(profile_id, str) or not profile_id:
+        raise DataAccessError("wind_profile_id is missing")
+    if profile_id in available:
+        return profile_id
+    folded = profile_id.casefold()
+    matches = [name for name in available if name.casefold() == folded]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise DataAccessError(
+            f"wind_profile_id {profile_id!r} matches more than one published profile: {matches}"
+        )
+    raise DataAccessError(
+        f"wind_profile_id {profile_id!r} is not a published profile. Available: {list(available)}"
     )
 
 
@@ -255,6 +298,18 @@ def _pv_regions(tables: Mapping[str, Mapping[str, object]]) -> tuple[str, ...]:
     if not all(isinstance(name, str) and name for name in regions):
         raise DataAccessError(f"{_SOURCE_PV} regions must be non-empty strings")
     return tuple(str(name) for name in regions)
+
+
+def _wind_profiles(tables: Mapping[str, Mapping[str, object]]) -> tuple[str, ...]:
+    entry = _table_coverage(tables, _SOURCE_WIND)
+    if "profiles" not in entry:
+        raise DataAccessError(f"{_SOURCE_WIND} profiles is missing")
+    profiles = entry["profiles"]
+    if not isinstance(profiles, (tuple, list)) or not profiles:
+        raise DataAccessError(f"{_SOURCE_WIND} profiles must be a non-empty sequence")
+    if not all(isinstance(name, str) and name for name in profiles):
+        raise DataAccessError(f"{_SOURCE_WIND} profiles must be non-empty strings")
+    return tuple(str(name) for name in profiles)
 
 
 def _parse_utc_instant(value: object, field: str) -> datetime:

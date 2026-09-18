@@ -52,16 +52,18 @@ def apply_period_preset(
     *,
     markets: Sequence[str] | None = None,
     pv_enabled: bool | None = None,
+    wind_enabled: bool | None = None,
 ) -> dict[str, object]:
     updated = dict(form)
     preset = str(updated.get("period_preset") or PRESET_2025)
     chosen = list(markets) if markets is not None else selected_markets(updated)
     pv = bool(updated.get("pv_enabled")) if pv_enabled is None else bool(pv_enabled)
+    wind = bool(updated.get("wind_enabled")) if wind_enabled is None else bool(wind_enabled)
     if preset == PRESET_2025:
         updated["start_date"] = "2025-01-01"
         updated["end_date"] = "2025-12-31"
     elif preset == PRESET_2026:
-        end = latest_inclusive_end(chosen, pv_enabled=pv, year=2026)
+        end = latest_inclusive_end(chosen, pv_enabled=pv, wind_enabled=wind, year=2026)
         updated["start_date"] = "2026-01-01"
         updated["end_date"] = end.isoformat()
     return updated
@@ -71,6 +73,7 @@ def latest_inclusive_end(
     markets: Sequence[str],
     *,
     pv_enabled: bool,
+    wind_enabled: bool = False,
     year: int = 2026,
 ) -> date:
     if not markets:
@@ -82,7 +85,7 @@ def latest_inclusive_end(
     bundle = published_bundle()
     while low <= high:
         mid = low + timedelta(days=(high - low).days // 2)
-        if _window_is_covered(bundle, markets, start, mid, pv_enabled):
+        if _window_is_covered(bundle, markets, start, mid, pv_enabled, wind_enabled):
             best = mid
             low = mid + timedelta(days=1)
         else:
@@ -100,9 +103,17 @@ def _window_is_covered(
     start: date,
     end: date,
     pv_enabled: bool,
+    wind_enabled: bool = False,
 ) -> bool:
     try:
-        resolve_selected_period(markets, start, end, pv_enabled=pv_enabled, bundle=bundle)
+        resolve_selected_period(
+            markets,
+            start,
+            end,
+            pv_enabled=pv_enabled,
+            wind_enabled=wind_enabled,
+            bundle=bundle,
+        )
     except DataAccessError:
         return False
     return True
@@ -114,6 +125,7 @@ def resolve_selected_period(
     end: date,
     *,
     pv_enabled: bool,
+    wind_enabled: bool = False,
     bundle: PublishedDataBundle | None = None,
 ):
     opened = bundle or published_bundle()
@@ -123,6 +135,8 @@ def resolve_selected_period(
         grid_export_mw=1.0,
         pv_ac_kw=500.0 if pv_enabled else 0.0,
         pv_region="Belgium",
+        wind_capacity_kw=1000.0 if wind_enabled else 0.0,
+        wind_profile_id="onshore_belgium",
     )
     resolved = None
     for market in markets:

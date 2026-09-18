@@ -60,6 +60,7 @@ def render_market_comparison_report(
     asset = child.config.asset
     site = child.config.site
     pv_enabled = child.config.pv_enabled()
+    wind_enabled = child.config.wind_enabled()
     lines: list[str] = [
         "StepInBel dedicated-market alternatives",
         "=======================================",
@@ -89,10 +90,19 @@ def render_market_comparison_report(
         f"Effective grid export: {_qty(child.config.effective_grid_export_mw())} MW",
         f"Co-located PV: {_qty(site.pv_ac_kw, 1)} kW AC"
         + (f" ({site.pv_region}, {site.pv_revenue_mode} settlement)" if pv_enabled else ""),
+    ]
+    if wind_enabled:
+        lines.append(
+            f"Co-located wind: {_qty(site.wind_capacity_kw, 1)} kW"
+            f" ({site.wind_profile_id}, {site.wind_revenue_mode} settlement)"
+        )
+    lines.extend(
+        [
         "",
         "Dedicated-market cases",
         "----------------------",
     ]
+    )
     _CASE_LABELS = (("da", "Day-ahead"), ("mfrr", "mFRR"), ("afrr", "aFRR"))
     for market, label in _CASE_LABELS:
         if market in request.case_requests:
@@ -105,13 +115,17 @@ def render_market_comparison_report(
         ]
     )
     for row in rows:
-        lines.extend(
+        block = [
+            f"Rank {row.revenue_rank}: {row.market} (run {row.case_run_id})",
+            f"  Total site revenue: {_money(row.total_site_revenue_eur)} EUR",
+            f"  Market energy net: {_money(row.market_energy_net_eur)} EUR",
+            f"  Capacity revenue: {_money(row.capacity_revenue_eur)} EUR",
+            f"  PV export revenue: {_money(row.pv_revenue_eur)} EUR",
+        ]
+        if wind_enabled:
+            block.append(f"  Wind export revenue: {_money(row.wind_revenue_eur)} EUR")
+        block.extend(
             [
-                f"Rank {row.revenue_rank}: {row.market} (run {row.case_run_id})",
-                f"  Total site revenue: {_money(row.total_site_revenue_eur)} EUR",
-                f"  Market energy net: {_money(row.market_energy_net_eur)} EUR",
-                f"  Capacity revenue: {_money(row.capacity_revenue_eur)} EUR",
-                f"  PV export revenue: {_money(row.pv_revenue_eur)} EUR",
                 f"  Difference from highest: {_money(row.difference_from_highest_eur)} EUR",
                 f"  Pumped energy: {_qty(row.pumped_mwh)} MWh",
                 f"  Turbined energy: {_qty(row.turbined_mwh)} MWh",
@@ -124,6 +138,7 @@ def render_market_comparison_report(
                 ),
             ]
         )
+        lines.extend(block)
     if mip_termination_warning:
         lines.extend(
             [
@@ -143,13 +158,46 @@ def render_market_comparison_report(
                 "Self-consumed PV has no separate revenue line; it lowers grid charging cost.",
             ]
         )
+    if wind_enabled:
+        settlement = (
+            "Day-ahead wind settlement uses day-ahead prices in every market case."
+            if site.wind_revenue_mode == "da"
+            else "Wind exports settle at the configured fixed price."
+        )
+        lines.extend(
+            [
+                "",
+                "Wind",
+                "----",
+                "Wind can serve pumping, be exported within the shared grid limit, or be curtailed.",
+                "Self-consumed wind has no separate revenue line; it lowers grid charging cost.",
+                settlement,
+            ]
+        )
+        if pv_enabled:
+            lines.append(
+                "When PV and wind export prices are equal and a shared constraint binds, "
+                "the source-specific split may be non-unique. Total routing and total site "
+                "revenue remain authoritative."
+            )
+    accounting = "Total site revenue includes market energy net, capacity revenue, and PV export revenue."
+    if wind_enabled:
+        accounting = (
+            "Total site revenue includes market energy net, capacity revenue, "
+            "PV export revenue, and wind export revenue."
+        )
+    pumping = "PV used for pumping reduces grid charging."
+    if wind_enabled and pv_enabled:
+        pumping = "PV and wind used for pumping reduce grid charging."
+    elif wind_enabled:
+        pumping = "Wind used for pumping reduces grid charging."
     lines.extend(
         [
             "",
             "Accounting",
             "----------",
-            "Total site revenue includes market energy net, capacity revenue, and PV export revenue.",
-            "PV used for pumping reduces grid charging.",
+            accounting,
+            pumping,
             "",
             "Highest modelled total-revenue market",
             "-------------------------------------",

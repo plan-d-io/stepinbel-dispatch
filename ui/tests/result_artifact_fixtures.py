@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -216,6 +217,15 @@ def write_genuine_two_market_comparison(destination: Path, parent_run_id: str) -
         solver_options=first.solver_options,
         run_id=parent_run_id,
         created_at_utc=first.created_at_utc,
+    )
+    frozen_hash = first.data_manifest_sha256
+    request = replace(
+        request,
+        data_manifest_sha256=frozen_hash,
+        case_requests={
+            market: replace(child, data_manifest_sha256=frozen_hash)
+            for market, child in request.case_requests.items()
+        },
     )
     destination.joinpath("comparison_request.json").write_text(
         dumps_json(serialize_market_comparison_request(request)),

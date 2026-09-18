@@ -17,6 +17,7 @@ from stepinbel.config.schema import (
     PvRevenueMode,
     SimulationConfig,
     SiteConfig,
+    WindRevenueMode,
     StorageHoursBasis,
     UtcPeriod,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "ConfigError",
     "StorageHoursBasis",
     "PvRevenueMode",
+    "WindRevenueMode",
     "ActivationProfile",
     "AssetConfig",
     "SiteConfig",

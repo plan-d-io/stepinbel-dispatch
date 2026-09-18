@@ -32,6 +32,11 @@ class DecodedSolution:
         pv_export: np.ndarray,
         pv_curtail: np.ndarray,
         pv_price: np.ndarray,
+        wind_available: np.ndarray,
+        wind_to_pump: np.ndarray,
+        wind_export: np.ndarray,
+        wind_curtail: np.ndarray,
+        wind_price: np.ndarray,
         capacity_mw: np.ndarray,
         u_pump: np.ndarray,
         u_turbine: np.ndarray,
@@ -48,6 +53,11 @@ class DecodedSolution:
         self.pv_export = pv_export
         self.pv_curtail = pv_curtail
         self.pv_price = pv_price
+        self.wind_available = wind_available
+        self.wind_to_pump = wind_to_pump
+        self.wind_export = wind_export
+        self.wind_curtail = wind_curtail
+        self.wind_price = wind_price
         self.capacity_mw = capacity_mw
         self.u_pump = u_pump
         self.u_turbine = u_turbine
@@ -74,8 +84,8 @@ def decode_solution(model: SparseModel, col_value: np.ndarray, objective: float)
         r_turb = np.zeros(n, dtype=np.float64)
     else:
         r_turb = _copy(x[layout.idx_r_turb : layout.idx_r_turb + n])
+    zeros = np.zeros(n, dtype=np.float64)
     if not prepared.pv_enabled:
-        zeros = np.zeros(n, dtype=np.float64)
         pv_to_pump = zeros.copy()
         pv_export = zeros.copy()
         pv_curtail = zeros.copy()
@@ -90,6 +100,21 @@ def decode_solution(model: SparseModel, col_value: np.ndarray, objective: float)
         pv_curtail = _copy(x[layout.idx_pv_curtail : layout.idx_pv_curtail + n])
         pv_avail = _copy(prepared.pv_available_mw)
         pv_price = _copy(prepared.pv_export_price)
+    if not prepared.wind_enabled:
+        wind_to_pump = zeros.copy()
+        wind_export = zeros.copy()
+        wind_curtail = zeros.copy()
+        wind_avail = zeros.copy()
+        wind_price = np.full(n, np.nan, dtype=np.float64)
+    else:
+        assert layout.idx_wind_to_pump is not None
+        assert layout.idx_wind_export is not None
+        assert layout.idx_wind_curtail is not None
+        wind_to_pump = _copy(x[layout.idx_wind_to_pump : layout.idx_wind_to_pump + n])
+        wind_export = _copy(x[layout.idx_wind_export : layout.idx_wind_export + n])
+        wind_curtail = _copy(x[layout.idx_wind_curtail : layout.idx_wind_curtail + n])
+        wind_avail = _copy(prepared.wind_available_mw)
+        wind_price = _copy(prepared.wind_export_price)
     if layout.idx_capacity is None:
         capacity = np.zeros(0, dtype=np.float64)
     else:
@@ -116,6 +141,11 @@ def decode_solution(model: SparseModel, col_value: np.ndarray, objective: float)
         pv_export=pv_export,
         pv_curtail=pv_curtail,
         pv_price=pv_price,
+        wind_available=wind_avail,
+        wind_to_pump=wind_to_pump,
+        wind_export=wind_export,
+        wind_curtail=wind_curtail,
+        wind_price=wind_price,
         capacity_mw=capacity,
         u_pump=u_pump,
         u_turbine=u_turbine,
@@ -139,10 +169,14 @@ def check_solution(
     summary_capacity: float,
     summary_pv: float,
     summary_total: float,
+    wind_revenue_eur: np.ndarray | None = None,
+    summary_wind: float = 0.0,
 ) -> FeasibilityReport:
     prepared = model.prepared
     n = prepared.n
     dt = prepared.dt_h
+    if wind_revenue_eur is None:
+        wind_revenue_eur = np.zeros(n, dtype=np.float64)
     raw = np.asarray(col_value, dtype=np.float64)
     if raw.shape != (model.num_col,):
         _fail(f"solution has {raw.size} values, expected {model.num_col}")
@@ -159,6 +193,10 @@ def check_solution(
         decoded.pv_to_pump,
         decoded.pv_export,
         decoded.pv_curtail,
+        decoded.wind_available,
+        decoded.wind_to_pump,
+        decoded.wind_export,
+        decoded.wind_curtail,
         decoded.capacity_mw,
         decoded.u_pump,
         decoded.u_turbine,
@@ -166,6 +204,7 @@ def check_solution(
         grid_charging_cost_eur,
         market_energy_net_eur,
         pv_revenue_eur,
+        wind_revenue_eur,
         interval_total_eur,
     ]
     for item in arrays:
@@ -176,6 +215,8 @@ def check_solution(
     # NaN is allowed only in disabled PV prices.
     if prepared.pv_enabled and not np.all(np.isfinite(decoded.pv_price)):
         _fail("PV export prices are not finite")
+    if prepared.wind_enabled and not np.all(np.isfinite(decoded.wind_price)):
+        _fail("wind export prices are not finite")
 
     lower_residual = np.maximum(model.col_lower - raw, 0.0)
     upper_residual = np.maximum(raw - model.col_upper, 0.0)
@@ -245,22 +286,37 @@ def check_solution(
         )
 
     pv_res = 0.0
+    wind_res = 0.0
     grid = 0.0
-    if prepared.pv_enabled:
-        split = decoded.pv_export + decoded.pv_to_pump + decoded.pv_curtail
-        pv_res = max(
-            pv_res,
-            float(np.max(np.abs(split - decoded.pv_available), initial=0.0)),
+    if prepared.pv_enabled or prepared.wind_enabled:
+        renewable_to_pump = np.zeros(n, dtype=np.float64)
+        renewable_export = np.zeros(n, dtype=np.float64)
+        if prepared.pv_enabled:
+            split = decoded.pv_export + decoded.pv_to_pump + decoded.pv_curtail
+            pv_res = max(
+                pv_res,
+                float(np.max(np.abs(split - decoded.pv_available), initial=0.0)),
+            )
+            renewable_to_pump = renewable_to_pump + decoded.pv_to_pump
+            renewable_export = renewable_export + decoded.pv_export
+        if prepared.wind_enabled:
+            split_w = decoded.wind_export + decoded.wind_to_pump + decoded.wind_curtail
+            wind_res = max(
+                wind_res,
+                float(np.max(np.abs(split_w - decoded.wind_available), initial=0.0)),
+            )
+            renewable_to_pump = renewable_to_pump + decoded.wind_to_pump
+            renewable_export = renewable_export + decoded.wind_export
+        pump_identity = float(
+            np.max(
+                np.abs(decoded.p_pump - (decoded.p_pump_grid + renewable_to_pump)),
+                initial=0.0,
+            )
         )
-        pv_res = max(
-            pv_res,
-            float(
-                np.max(
-                    np.abs(decoded.p_pump - (decoded.p_pump_grid + decoded.pv_to_pump)),
-                    initial=0.0,
-                )
-            ),
-        )
+        if prepared.pv_enabled:
+            pv_res = max(pv_res, pump_identity)
+        if prepared.wind_enabled:
+            wind_res = max(wind_res, pump_identity)
         grid = max(
             grid,
             float(np.max(np.maximum(decoded.p_pump_grid - prepared.grid_import_mw, 0.0), initial=0.0)),
@@ -270,7 +326,7 @@ def check_solution(
             float(
                 np.max(
                     np.maximum(
-                        decoded.p_turbine + decoded.pv_export - prepared.grid_export_mw,
+                        decoded.p_turbine + renewable_export - prepared.grid_export_mw,
                         0.0,
                     ),
                     initial=0.0,
@@ -314,7 +370,10 @@ def check_solution(
         ),
         float(
             np.max(
-                np.abs(interval_total_eur - (market_energy_net_eur + pv_revenue_eur)),
+                np.abs(
+                    interval_total_eur
+                    - (market_energy_net_eur + pv_revenue_eur + wind_revenue_eur)
+                ),
                 initial=0.0,
             )
         ),
@@ -324,8 +383,9 @@ def check_solution(
         abs(summary_charging - float(grid_charging_cost_eur.sum())),
         abs(summary_energy_net - float(market_energy_net_eur.sum())),
         abs(summary_pv - float(pv_revenue_eur.sum())),
+        abs(summary_wind - float(wind_revenue_eur.sum())),
         abs(summary_energy_net - (summary_energy_gross - summary_charging)),
-        abs(summary_total - (summary_energy_net + summary_capacity + summary_pv)),
+        abs(summary_total - (summary_energy_net + summary_capacity + summary_pv + summary_wind)),
     )
     objective_res = abs(decoded.objective - summary_total)
 
@@ -346,18 +406,20 @@ def check_solution(
             and balance <= ENERGY_TOL_MWH
             and ramp <= POWER_TOL_MW
             and pv_res <= PV_ALLOCATION_TOL_MW
+            and wind_res <= PV_ALLOCATION_TOL_MW
             and grid <= POWER_TOL_MW
             and cap_res <= max(POWER_TOL_MW, ENERGY_TOL_MWH)
             and interval_acc <= ACCOUNTING_TOL_EUR
             and summary_acc <= ACCOUNTING_TOL_EUR
             and objective_res <= ACCOUNTING_TOL_EUR
         ),
+        max_wind_residual_mw=wind_res,
     )
     if not report.ok:
         raise SolverError(
             "post-solve feasibility or accounting checks failed: "
             f"bound={bound:.3e} init/term={init_term:.3e} balance={balance:.3e} "
-            f"ramp={ramp:.3e} pv={pv_res:.3e} grid={grid:.3e} capacity={cap_res:.3e} "
+            f"ramp={ramp:.3e} pv={pv_res:.3e} wind={wind_res:.3e} grid={grid:.3e} capacity={cap_res:.3e} "
             f"interval_acc={interval_acc:.3e} summary_acc={summary_acc:.3e} "
             f"objective={objective_res:.3e} status={model.num_col}x{model.num_row}"
         )

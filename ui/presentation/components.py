@@ -28,6 +28,9 @@ from ui.presentation.tokens import (
     CHART_RESERVOIR,
     CHART_REVENUE,
     CHART_TURBINE,
+    CHART_WIND,
+    CHART_WIND_CURTAIL,
+    CHART_WIND_EXPORT,
     PAGE_BG,
     PRIMARY,
     SURFACE,
@@ -101,6 +104,12 @@ _SERIES_COLOURS = {
     "Capacity revenue": CHART_GRID,
     "Net energy revenue": CHART_REVENUE,
     "PV revenue": CHART_PV,
+    "Wind revenue": CHART_WIND,
+    "Available wind": CHART_WIND,
+    "Wind used for pumping": CHART_PUMP,
+    "Wind exported": CHART_WIND_EXPORT,
+    "Wind export": CHART_WIND_EXPORT,
+    "Wind curtailed": CHART_WIND_CURTAIL,
     "Revenue": PRIMARY,
 }
 
@@ -196,6 +205,7 @@ def render_market_highlight(
     energy: str,
     capacity: str | None = None,
     pv: str | None = None,
+    wind: str | None = None,
     note: str | None = None,
 ) -> None:
     parts = [
@@ -211,6 +221,9 @@ def render_market_highlight(
     if pv is not None:
         parts.append('<p class="sib-readout-label">PV revenue</p>')
         parts.append(f'<p class="sib-readout-value">{escape_html(pv)}</p>')
+    if wind is not None:
+        parts.append('<p class="sib-readout-label">Wind revenue</p>')
+        parts.append(f'<p class="sib-readout-value">{escape_html(wind)}</p>')
     if note:
         parts.append(f'<p class="sib-highlight-note">{escape_html(note)}</p>')
     st.html(f'<div class="sib-highlight">{"".join(parts)}</div>')
@@ -636,15 +649,91 @@ COLUMN_GLOSSARY: tuple[tuple[str, str], ...] = (
 )
 
 
-def column_glossary_entries() -> tuple[tuple[str, str], ...]:
+def column_glossary_entries(
+    *,
+    pv_included: bool = True,
+    wind_included: bool = False,
+) -> tuple[tuple[str, str], ...]:
     from ui.presentation.tokens import SIMULTANEOUS_DIAGNOSTIC
 
-    return (*COLUMN_GLOSSARY, ("Simultaneous operation", SIMULTANEOUS_DIAGNOSTIC))
+    revenue_parts = ["Net energy revenue", "capacity revenue"]
+    if pv_included:
+        revenue_parts.append("PV revenue")
+    if wind_included:
+        revenue_parts.append("wind revenue")
+    total = " + ".join(revenue_parts) + "."
+    extras: list[str] = ["Capacity revenue"]
+    if pv_included:
+        extras.append("direct PV-export revenue")
+    if wind_included:
+        extras.append("direct wind-export revenue")
+    if pv_included and wind_included:
+        extra_text = "Capacity revenue and direct PV-export and wind-export revenue are reported separately."
+    elif len(extras) == 1:
+        extra_text = "Capacity revenue is reported separately."
+    else:
+        extra_text = f"{extras[0]} and {extras[1]} are reported separately."
+    energy = (
+        "Revenue from generated electricity sold to the market, minus the cost of grid electricity used for pumping. "
+        + extra_text
+    )
+    entries: list[tuple[str, str]] = [
+        ("Total site revenue", total),
+        ("Net energy revenue", energy),
+        ("Capacity revenue", "Payments for committed reserve capacity; not applicable to Day-ahead."),
+    ]
+    if pv_included:
+        entries.append(("PV revenue", "Revenue from PV exported directly to the market."))
+    if wind_included:
+        entries.append(("Wind revenue", "Revenue from wind exported directly to the market."))
+    entries.extend(
+        [
+            ("Pumped energy", "Total energy consumed by pumping."),
+            ("Turbined energy", "Total electrical energy generated."),
+            ("Full cycles", "Turbined energy divided by maximum reservoir energy."),
+        ]
+    )
+    if pv_included:
+        entries.extend(
+            [
+                ("PV self-consumed", "PV used directly for pumping."),
+                ("PV self-consumed (%)", "Share of available PV energy used directly for pumping."),
+            ]
+        )
+    if wind_included:
+        entries.extend(
+            [
+                ("Wind self-consumed", "Wind used directly for pumping."),
+                ("Wind self-consumed (%)", "Share of available wind energy used directly for pumping."),
+            ]
+        )
+    if pv_included:
+        entries.extend(
+            [
+                ("PV exported", "PV delivered to the grid."),
+                ("PV curtailed", "Available PV that could not be used or exported."),
+            ]
+        )
+    if wind_included:
+        entries.extend(
+            [
+                ("Wind exported", "Wind delivered to the grid."),
+                ("Wind curtailed", "Available wind that could not be used or exported."),
+            ]
+        )
+    entries.append(("Simultaneous operation", SIMULTANEOUS_DIAGNOSTIC))
+    return tuple(entries)
 
 
-def column_glossary_html() -> str:
+def column_glossary_html(
+    *,
+    pv_included: bool = True,
+    wind_included: bool = False,
+) -> str:
     rows: list[str] = []
-    for name, explanation in column_glossary_entries():
+    for name, explanation in column_glossary_entries(
+        pv_included=pv_included, wind_included=wind_included
+    ):
         rows.append(
             '<div class="sib-glossary-row">'
             f"<dt><strong>{escape_html(name)}</strong></dt>"
@@ -663,11 +752,11 @@ def render_how_to_read_results(*, one_market: bool = False) -> None:
             st.write(line)
 
 
-def render_column_glossary() -> None:
+def render_column_glossary(*, pv_included: bool = True, wind_included: bool = False) -> None:
     from ui.presentation.tokens import COLUMN_GLOSSARY_TITLE
 
     with st.expander(COLUMN_GLOSSARY_TITLE, expanded=False):
-        st.html(column_glossary_html())
+        st.html(column_glossary_html(pv_included=pv_included, wind_included=wind_included))
 
 
 def render_stage_progress(*, completed: int, total: int) -> None:

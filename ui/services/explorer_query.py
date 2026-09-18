@@ -46,6 +46,14 @@ DISPATCH_COLUMNS: tuple[str, ...] = (
     "pv_revenue_eur",
     "total_revenue_eur",
 )
+WIND_DISPATCH_COLUMNS: tuple[str, ...] = (
+    "wind_available_mw",
+    "wind_to_pump_mw",
+    "wind_export_mw",
+    "wind_curtail_mw",
+    "wind_export_price_eur_mwh",
+    "wind_revenue_eur",
+)
 CAPACITY_COLUMNS: tuple[str, ...] = (
     "direction",
     "start_index",
@@ -137,6 +145,8 @@ def _resolved_bounds(resolved: Mapping[str, Any]) -> dict[str, Any]:
     site = _nested(resolved, "config", "site")
     try:
         pv_kw = require_finite(site.get("pv_ac_kw"))
+        wind_raw = site.get("wind_capacity_kw")
+        wind_kw = 0.0 if wind_raw is None else require_finite(wind_raw)
     except ValueError:
         _fail()
     return {
@@ -146,6 +156,7 @@ def _resolved_bounds(resolved: Mapping[str, Any]) -> dict[str, Any]:
         "effective_grid_import_mw": grid_import,
         "effective_grid_export_mw": grid_export,
         "pv_included": pv_kw > 0,
+        "wind_included": wind_kw > 0,
     }
 
 
@@ -179,22 +190,27 @@ def query_dispatch_week(
     start_utc: datetime,
     end_utc: datetime,
     expected_rows: int,
+    extra_columns: Sequence[str] = (),
 ) -> dict[str, list[Any]]:
     if path.name != "dispatch.parquet":
         _fail()
+    columns = list(DISPATCH_COLUMNS)
+    extra = tuple(extra_columns)
+    if extra:
+        columns.extend(extra)
     try:
         dataset = ds.dataset(str(path), format="parquet")
         start_scalar = pa.scalar(start_utc, type=pa.timestamp("us", tz="UTC"))
         end_scalar = pa.scalar(end_utc, type=pa.timestamp("us", tz="UTC"))
         filt = (pc.field("datetime_utc") >= start_scalar) & (pc.field("datetime_utc") < end_scalar)
-        table = dataset.to_table(columns=list(DISPATCH_COLUMNS), filter=filt)
+        table = dataset.to_table(columns=columns, filter=filt)
     except (OSError, TypeError, ValueError, pa.ArrowInvalid, pa.ArrowTypeError):
         _fail()
-    if list(table.column_names) != list(DISPATCH_COLUMNS):
+    if list(table.column_names) != columns:
         _fail()
     if table.num_rows != expected_rows:
         _fail()
-    lengths = {table.column(name).length() for name in DISPATCH_COLUMNS}
+    lengths = {table.column(name).length() for name in columns}
     if lengths != {expected_rows}:
         _fail()
     stamps = [_require_aware_utc(item) for item in table.column("datetime_utc").to_pylist()]
@@ -209,7 +225,9 @@ def query_dispatch_week(
         if index and moment <= stamps[index - 1]:
             _fail()
     payload: dict[str, list[Any]] = {"datetime_utc": stamps}
-    for name in NUMERIC_DISPATCH:
+    numeric = list(NUMERIC_DISPATCH)
+    numeric.extend(extra)
+    for name in numeric:
         values = table.column(name).to_pylist()
         payload[name] = [_finite_number(item) for item in values]
     return payload
@@ -343,11 +361,13 @@ def load_explorer_week(
     if expected != int(week["expected_rows"]):
         _fail()
     dispatch_path = child / "dispatch.parquet"
+    extra = WIND_DISPATCH_COLUMNS if bounds["wind_included"] else ()
     dispatch = query_dispatch_week(
         dispatch_path,
         start_utc=start,
         end_utc=end,
         expected_rows=expected,
+        extra_columns=extra,
     )
     axis = week_axis(dispatch["datetime_utc"])
     capacity: dict[str, Any] | None = None
@@ -360,10 +380,14 @@ def load_explorer_week(
             expected_rows=expected,
         )
     hover = list(axis["hover_labels"])
+    numeric_names = list(NUMERIC_DISPATCH)
+    if bounds["wind_included"]:
+        numeric_names.extend(WIND_DISPATCH_COLUMNS)
     return {
         "market": market,
         "week": week,
         "pv_included": bounds["pv_included"],
+        "wind_included": bounds["wind_included"],
         "e_max_mwh": bounds["e_max_mwh"],
         "effective_grid_import_mw": bounds["effective_grid_import_mw"],
         "effective_grid_export_mw": bounds["effective_grid_export_mw"],
@@ -374,7 +398,7 @@ def load_explorer_week(
         "tick_text": list(axis["tick_text"]),
         "first_hover": hover[0],
         "last_hover": hover[-1],
-        "dispatch": {name: list(dispatch[name]) for name in NUMERIC_DISPATCH},
+        "dispatch": {name: list(dispatch[name]) for name in numeric_names},
         "capacity": capacity,
         "dispatch_identity": file_identity(dispatch_path),
         "has_capacity": market in BALANCING_MARKETS,

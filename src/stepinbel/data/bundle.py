@@ -20,6 +20,7 @@ REQUIRED_TABLES: tuple[str, ...] = (
     "capacity_bids",
     "pv_profile_qh",
 )
+OPTIONAL_WIND_TABLE = "wind_profile_qh"
 
 _REQUIRED_MANIFEST_KEYS: tuple[str, ...] = (
     "pipeline_version",
@@ -107,6 +108,15 @@ REQUIRED_SCHEMAS: dict[str, tuple[tuple[str, str], ...]] = {
         ("monitored_capacity_mw", "double"),
         ("load_factor", "double"),
     ),
+    "wind_profile_qh": (
+        ("datetime_utc", _TIMESTAMP_UTC),
+        ("profile_id", _DICTIONARY_STRING),
+        ("wind_type", _DICTIONARY_STRING),
+        ("region", _DICTIONARY_STRING),
+        ("measured_mw", "double"),
+        ("monitored_capacity_mw", "double"),
+        ("load_factor", "double"),
+    ),
 }
 
 
@@ -156,8 +166,20 @@ def open_published_bundle(root: str | Path) -> PublishedDataBundle:
     validated: dict[str, PublishedTable] = {}
     for stem in REQUIRED_TABLES:
         validated[stem] = _validate_table(data_root, stem, tables_obj)
+    wind_in_manifest = OPTIONAL_WIND_TABLE in tables_obj
+    wind_path = data_root / f"{OPTIONAL_WIND_TABLE}.parquet"
+    wind_file_present = wind_path.is_file()
+    if wind_in_manifest or wind_file_present:
+        if not wind_in_manifest:
+            raise DataBundleError(
+                f"{OPTIONAL_WIND_TABLE}.parquet is present but MANIFEST.json "
+                f"has no {OPTIONAL_WIND_TABLE} entry"
+            )
+        validated[OPTIONAL_WIND_TABLE] = _validate_table(
+            data_root, OPTIONAL_WIND_TABLE, tables_obj
+        )
 
-    coverage = _freeze_coverage(tables_obj)
+    coverage = _freeze_coverage(tables_obj, tuple(validated))
     return PublishedDataBundle(
         root=data_root,
         manifest_path=manifest_path,
@@ -333,9 +355,10 @@ def _sha256_file(path: Path) -> str:
 
 def _freeze_coverage(
     tables_obj: Mapping[str, Any],
+    stems: tuple[str, ...],
 ) -> Mapping[str, Mapping[str, object]]:
     frozen: dict[str, Mapping[str, object]] = {}
-    for stem in REQUIRED_TABLES:
+    for stem in stems:
         entry = tables_obj[stem]
         if not isinstance(entry, dict):
             continue
@@ -348,6 +371,8 @@ def _freeze_coverage(
             )
         if "regions" in entry:
             item["regions"] = _as_sequence(entry["regions"])
+        if "profiles" in entry:
+            item["profiles"] = _as_sequence(entry["profiles"])
         frozen[stem] = MappingProxyType(item)
     return MappingProxyType(frozen)
 

@@ -25,6 +25,8 @@ from ui.presentation.components import (
 )
 from ui.presentation.tokens import (
     EXPLORER_CAPACITY_BOTH_CAPTION,
+    EXPLORER_CSV_CAPTION,
+    EXPLORER_CSV_LABEL,
     EXPLORER_DA_CAPACITY_COPY,
     EXPLORER_ERROR_BODY,
     EXPLORER_ERROR_TITLE,
@@ -38,6 +40,12 @@ from ui.presentation.tokens import (
     EXPLORER_WEEK_INTRO,
     EXPLORER_ZOOM_CAPTION,
     PV_NOT_INCLUDED_COPY,
+)
+from ui.services.explorer_csv import (
+    CSV_MIME,
+    deferred_explorer_week_csv,
+    explorer_csv_button_key,
+    explorer_csv_filename,
 )
 from ui.services.explorer_query import (
     ExplorerError,
@@ -98,6 +106,7 @@ def explorer_chart_model(payload: Mapping[str, Any]) -> ExplorerChartModel:
     dispatch = payload["dispatch"]
     n = int(payload["row_count"])
     pv_included = bool(payload["pv_included"])
+    wind_included = bool(payload.get("wind_included"))
 
     def require(name: str) -> list[float]:
         values = list(dispatch[name])
@@ -138,6 +147,8 @@ def explorer_chart_model(payload: Mapping[str, Any]) -> ExplorerChartModel:
     ]
     if pv_included:
         revenue_series.append(("PV revenue", require("pv_revenue_eur")))
+    if wind_included:
+        revenue_series.append(("Wind revenue", require("wind_revenue_eur")))
     revenue_series.append(("Total interval revenue", require("total_revenue_eur")))
     panels.append(
         ExplorerPanel(
@@ -165,9 +176,25 @@ def explorer_chart_model(payload: Mapping[str, Any]) -> ExplorerChartModel:
         )
     else:
         pv_message = PV_NOT_INCLUDED_COPY
+    if wind_included:
+        panels.append(
+            ExplorerPanel(
+                group=EXPLORER_GROUP_MAIN,
+                title="Wind allocation",
+                y_label="Power (MW)",
+                series=(
+                    ("Available wind", require("wind_available_mw")),
+                    ("Wind used for pumping", require("wind_to_pump_mw")),
+                    ("Wind exported", require("wind_export_mw")),
+                    ("Wind curtailed", require("wind_curtail_mw")),
+                ),
+            )
+        )
     export_series = [("Turbine output", require("p_turbine_mw"))]
     if pv_included:
         export_series.append(("PV export", require("pv_export_mw")))
+    if wind_included:
+        export_series.append(("Wind export", require("wind_export_mw")))
     panels.extend(
         [
             ExplorerPanel(
@@ -186,7 +213,18 @@ def explorer_chart_model(payload: Mapping[str, Any]) -> ExplorerChartModel:
             ),
         ]
     )
-    captions = [EXPLORER_ZOOM_CAPTION, EXPLORER_INTERVAL_CAPTION]
+    interval_caption = EXPLORER_INTERVAL_CAPTION
+    if wind_included and pv_included:
+        interval_caption = (
+            "Total interval revenue includes net energy revenue and direct PV-export and "
+            "wind-export revenue. Capacity revenue is settled by block and is not included in this chart."
+        )
+    elif wind_included:
+        interval_caption = (
+            "Total interval revenue includes net energy revenue and direct wind-export revenue. "
+            "Capacity revenue is settled by block and is not included in this chart."
+        )
+    captions = [EXPLORER_ZOOM_CAPTION, interval_caption]
     capacity_message = None
     if not payload["has_capacity"]:
         capacity_message = EXPLORER_DA_CAPACITY_COPY
@@ -324,6 +362,23 @@ def render_data_explorer(
     with st.expander(EXPLORER_EXPANDER_TITLE, expanded=False):
         st.write(EXPLORER_WEEK_INTRO)
         st.write(week_count_copy(week))
+
+    st.download_button(
+        EXPLORER_CSV_LABEL,
+        data=deferred_explorer_week_csv(
+            dict(result),
+            market=selected_market,
+            week_id=str(selected_week),
+            job=dict(job) if isinstance(job, Mapping) else None,
+            outputs_root=outputs_root,
+        ),
+        file_name=explorer_csv_filename(str(result["job_id"]), selected_market, str(selected_week)),
+        mime=CSV_MIME,
+        type="secondary",
+        key=explorer_csv_button_key(identity, selected_market, str(selected_week)),
+        on_click="ignore",
+    )
+    st.caption(EXPLORER_CSV_CAPTION)
 
     try:
         dispatch_path = trusted_dispatch_path(

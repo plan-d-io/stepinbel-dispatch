@@ -13,23 +13,25 @@ import pyarrow.parquet as pq
 import pytest
 
 from stepinbel.data import DataBundleError, open_published_bundle
-from stepinbel.data.bundle import REQUIRED_SCHEMAS, REQUIRED_TABLES
+from stepinbel.data.bundle import OPTIONAL_WIND_TABLE, REQUIRED_SCHEMAS, REQUIRED_TABLES
 
 EXPECTED_DATA_HASHES = {
-    "MANIFEST.json": "e13a1ab320201babf11aad8d047cb58079efa9e644a1a1b77fff16527a0a94a6",
-    "da_prices_qh.parquet": "20d11bf9d3296412b7ae24fef8972d30bc7b8b8977dff7f2fac51502bcbcd646",
-    "balancing_qh.parquet": "4826c208305523a9e6ae033a40f26032519850548c533f3363967b88b60e9094",
-    "capacity_blocks.parquet": "f55ce1b54c1c92df7cff2033058bfd20246f260794dae65b04e9282e31ab114b",
-    "capacity_bids.parquet": "02046aebd1a69cf4809c4aa9f3a61c8a8367b016ca750dcb9df9677d72ea5f80",
-    "pv_profile_qh.parquet": "77f52a1490a16f410454b0470ebaa2de85dd9ba2c73ca5161464de5dc32b5608",
+    "MANIFEST.json": "f74396e74c3f149b092be7529395e361afeb7811a2b7e641ed220c4b9d996c8d",
+    "da_prices_qh.parquet": "2ee198b8829baf45b18c13fda8fac24f349a385c9021af1372bb40070aec2ca4",
+    "balancing_qh.parquet": "9bd5f40bb3b81086e9c1810da6ab2e03942c6088f3496d8e71c4b3ff229850b2",
+    "capacity_blocks.parquet": "ebc122484f46c2caaece1fdef69dda53961ef58d1a27604455da8f7b3679b8c5",
+    "capacity_bids.parquet": "819924867c73c348d223aef45fa8abd6bbcff28cf0189f53ae871be8250cdb7d",
+    "pv_profile_qh.parquet": "fa5043887b8a61f0c0603d35f71a8f68f82e48a8fa36ed753a626ceadd9b9eb3",
+    "wind_profile_qh.parquet": "0317c91d85f7185cb272f653ef46b9b495db1c16304c0200852c58d1aeabf917",
 }
 
 EXPECTED_ROW_COUNTS = {
-    "da_prices_qh": 403964,
-    "balancing_qh": 78144,
-    "capacity_blocks": 62196,
-    "capacity_bids": 3699211,
-    "pv_profile_qh": 2962176,
+    "da_prices_qh": 410396,
+    "balancing_qh": 81408,
+    "capacity_blocks": 63420,
+    "capacity_bids": 3779118,
+    "pv_profile_qh": 3007872,
+    "wind_profile_qh": 941168,
 }
 
 EXPECTED_SCHEMAS = {
@@ -99,6 +101,15 @@ EXPECTED_SCHEMAS = {
     ),
     "pv_profile_qh": (
         ("datetime_utc", "timestamp[us, tz=UTC]"),
+        ("region", "dictionary<string>"),
+        ("measured_mw", "double"),
+        ("monitored_capacity_mw", "double"),
+        ("load_factor", "double"),
+    ),
+    "wind_profile_qh": (
+        ("datetime_utc", "timestamp[us, tz=UTC]"),
+        ("profile_id", "dictionary<string>"),
+        ("wind_type", "dictionary<string>"),
         ("region", "dictionary<string>"),
         ("measured_mw", "double"),
         ("monitored_capacity_mw", "double"),
@@ -183,20 +194,31 @@ def test_open_published_bundle_accepts_copied_bundle(published_bundle, data_root
     assert published_bundle.root == data_root.resolve()
     assert published_bundle.manifest_path == data_root.resolve() / "MANIFEST.json"
     assert published_bundle.pipeline_version == "1.0.0"
-    assert published_bundle.built_at_utc == "2026-08-14T17:18:21Z"
-    assert published_bundle.git_commit == "8208d06"
+    assert published_bundle.built_at_utc == "2026-09-17T20:05:04Z"
+    assert published_bundle.git_commit == "2f071d2"
     assert published_bundle.partial_build is False
     assert published_bundle.manifest_sha256 == EXPECTED_DATA_HASHES["MANIFEST.json"]
-    assert set(published_bundle.tables) == set(REQUIRED_TABLES)
+    assert set(REQUIRED_TABLES) <= set(published_bundle.tables)
+    assert OPTIONAL_WIND_TABLE in published_bundle.tables
     assert published_bundle.coverage["da_prices_qh"]["coverage_utc"] == (
         "2015-01-04T23:00:00Z",
-        "2026-07-13T21:45:00Z",
+        "2026-09-18T21:45:00Z",
     )
     assert published_bundle.coverage["capacity_blocks"]["coverage_by_product"]["mfrr"] == (
         "2021-01-01",
-        "2026-08-15",
+        "2026-09-18",
     )
     assert "Belgium" in published_bundle.coverage["pv_profile_qh"]["regions"]
+    assert published_bundle.coverage["wind_profile_qh"]["coverage_utc"] == (
+        "2019-12-31T23:00:00Z",
+        "2026-09-16T21:45:00Z",
+    )
+    assert published_bundle.coverage["wind_profile_qh"]["profiles"] == (
+        "onshore_belgium",
+        "onshore_flanders",
+        "onshore_wallonia",
+        "offshore_belgium",
+    )
 
 
 def test_copied_data_hashes_match_brief(data_root: Path) -> None:
@@ -227,7 +249,7 @@ def test_open_published_bundle_uses_explicit_root_not_cwd(
         "import sys\n"
         "bundle = open_published_bundle(Path(sys.argv[1]))\n"
         "assert bundle.pipeline_version == '1.0.0'\n"
-        "assert bundle.tables['da_prices_qh'].parquet_row_count == 403964\n"
+        "assert bundle.tables['da_prices_qh'].parquet_row_count == 410396\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", script, str(data_root.resolve())],

@@ -18,8 +18,8 @@ _VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
 
 def test_ui_version_has_a_single_file_source() -> None:
-    assert UI_VERSION_FILE.read_text(encoding="utf-8") == "0.2.0\n" or (
-        UI_VERSION_FILE.read_text(encoding="utf-8").strip() == "0.2.0"
+    assert UI_VERSION_FILE.read_text(encoding="utf-8") == "0.3.1\n" or (
+        UI_VERSION_FILE.read_text(encoding="utf-8").strip() == "0.3.1"
     )
     assert UI_VERSION == UI_VERSION_FILE.read_text(encoding="utf-8").strip()
     assert UI_VERSION == read_ui_version()
@@ -31,7 +31,11 @@ def test_simulator_version_comes_from_public_core() -> None:
     from stepinbel import __version__ as simulator_version
 
     assert simulator_version == SIMULATOR_VERSION_FILE.read_text(encoding="utf-8").strip()
+    assert simulator_version == "0.3.0"
     assert SHELL_SIMULATOR_VERSION == simulator_version
+    assert UI_VERSION == "0.3.1"
+    assert SHELL_UI_VERSION == "0.3.1"
+    assert UI_VERSION != simulator_version
 
 
 def test_version_file_validation(tmp_path: Path) -> None:

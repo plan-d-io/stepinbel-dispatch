@@ -33,7 +33,8 @@ from ui.presentation.tokens import (
     REVIEW_READY_BODY,
     REVIEW_READY_TITLE,
 )
-from ui.services.form import BID_FIXED, PRESET_CUSTOM, STORAGE_POND
+from ui.services.form import BID_FIXED, PRESET_CUSTOM, STORAGE_POND, WIND_PROFILE_LABELS, pv_region_label
+from ui.services.result_format import format_kw_capacity
 from ui.services.commitment import (
     COMMITMENT_EXPANDER,
     COMMITMENT_REVIEW_WARNING_TITLE,
@@ -89,8 +90,21 @@ def _pv_text(site: Mapping[str, Any], *, demo: bool) -> str:
     mode = "day-ahead valuation" if site.get("pv_revenue_mode") != "fixed" else (
         f"fixed {site.get('pv_fixed_price_eur_mwh')} EUR/MWh"
     )
-    region = site.get("pv_region") or "Belgium"
-    return f"{pv_kw:.0f} kW {region}, {mode}"
+    region = pv_region_label(site.get("pv_region"))
+    return f"{format_kw_capacity(pv_kw)} {region}, {mode}"
+
+
+def _wind_text(site: Mapping[str, Any]) -> str | None:
+    wind_kw = float(site.get("wind_capacity_kw") or 0.0)
+    if wind_kw <= 0:
+        return None
+    profile = site.get("wind_profile_id")
+    profile_label = WIND_PROFILE_LABELS.get(str(profile), str(profile or "Onshore Belgium"))
+    if site.get("wind_revenue_mode") == "fixed":
+        mode = f"fixed {site.get('wind_fixed_price_eur_mwh')} EUR/MWh"
+    else:
+        mode = "day-ahead valuation"
+    return f"{format_kw_capacity(wind_kw)} · {profile_label} · {mode}"
 
 
 def _balancing_text(snapshot: Mapping[str, Any]) -> str:
@@ -260,6 +274,10 @@ def _render_review_body(snapshot: Mapping[str, Any], *, demo: bool) -> None:
     )
     render_section_heading("PV")
     st.write(_pv_text(site, demo=demo))
+    wind_text = _wind_text(site)
+    if wind_text is not None:
+        render_section_heading("Wind")
+        st.write(wind_text)
     render_section_heading("Balancing assumptions")
     st.write(_balancing_text(snapshot))
     commitment_rows = review_commitment_rows(snapshot, market_count=len(markets))

@@ -164,6 +164,10 @@ def build_site(namespace: argparse.Namespace) -> SiteConfig:
         ("pv_region", "pv_region"),
         ("pv_revenue_mode", "pv_revenue_mode"),
         ("pv_fixed_price_eur_mwh", "pv_fixed_price_eur_mwh"),
+        ("wind_capacity_kw", "wind_capacity_kw"),
+        ("wind_profile", "wind_profile_id"),
+        ("wind_revenue_mode", "wind_revenue_mode"),
+        ("wind_fixed_price_eur_mwh", "wind_fixed_price_eur_mwh"),
     )
     for dest, field in mapping:
         if has_option(namespace, dest):
@@ -174,6 +178,12 @@ def build_site(namespace: argparse.Namespace) -> SiteConfig:
         raise CliError("--pv-fixed-price-eur-mwh requires --pv-revenue-mode fixed")
     if mode == "fixed" and not has_price:
         raise CliError("fixed PV revenue mode requires --pv-fixed-price-eur-mwh")
+    wind_mode = kwargs.get("wind_revenue_mode")
+    has_wind_price = "wind_fixed_price_eur_mwh" in kwargs
+    if has_wind_price and wind_mode != "fixed":
+        raise CliError("--wind-fixed-price-eur-mwh requires --wind-revenue-mode fixed")
+    if wind_mode == "fixed" and not has_wind_price:
+        raise CliError("fixed wind revenue mode requires --wind-fixed-price-eur-mwh")
     return SiteConfig(**kwargs)
 
 

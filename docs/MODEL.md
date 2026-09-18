@@ -42,15 +42,18 @@ Always:
 - `0 <= E[t] <= E_max` for `t = 0, …, n`
 
 A non-negative `r_up` variable exists for a machine only when that machine's
-epsilon is positive. Without PV, `p_pump_grid` is the same solver variable as
-`p_pump`. With PV the extra non-negative variables are `p_pump_grid`,
-`pv_export`, `pv_to_pump`, and `pv_curtail`. One continuous `c_b` exists per
+epsilon is positive. Without PV or wind, `p_pump_grid` is the same solver
+variable as `p_pump`. With PV and/or wind the extra non-negative variables are
+`p_pump_grid` plus the enabled source's `export`, `to_pump`, and `curtail`
+variables. PV and wind use separate allocation variables because their
+settlement modes and prices may differ. One continuous `c_b` exists per
 supplied capacity commitment, bounded by `[0, cap_max]`. The default LP has
-no integer or binary variables.
+no integer or binary variables. Wind adds continuous variables only and does
+not independently switch the solver to MILP.
 
-Prepared bounds without PV are `min(market bound, effective grid limit)`.
-Omitted grid limits default to the respective machine ratings. With PV, total
-pump stays within market/rated bounds; `p_pump_grid` is also bounded by
+Prepared bounds without renewables are `min(market bound, effective grid limit)`.
+Omitted grid limits default to the respective machine ratings. With PV or wind,
+total pump stays within market/rated bounds; `p_pump_grid` is also bounded by
 effective grid import.
 
 ## Reservoir
@@ -82,24 +85,50 @@ Proportional epsilon is a known limitation around negative prices: waste is
 not a bid-cost, so a machine may still ramp when energy is cheap. That PHS
 behaviour is retained.
 
-## PV and shared grid
+## PV, wind, and shared grid
 
-Availability is `load_factor * pv_ac_kw / 1000` MW. Export price is always the
-day-ahead series (`MarketDispatchInputs.day_ahead_price_eur_mwh`) or the
-configured fixed price. It is never the mFRR activation price. The model does
-not pre-reserve cable headroom for PV or capacity. PV may be curtailed to make
-room for turbine export.
+Availability is `load_factor * capacity_kw / 1000` MW for each enabled source.
+PV uses the selected `pv_region` profile, with Belgium as the default. Wind
+uses exactly one of the four published profiles (`onshore_belgium`,
+`offshore_belgium`, `onshore_flanders`, `onshore_wallonia`); those profiles
+are alternatives and are never summed. Export price is always the day-ahead
+series
+(`MarketDispatchInputs.day_ahead_price_eur_mwh`) or the configured fixed
+price. It is never an mFRR or aFRR activation price. The model does not
+pre-reserve cable headroom for renewables or capacity. A source may be
+curtailed to make room for turbine export.
+
+PV load factors are clipped only by the existing PV contract. Wind load
+factors must be finite and non-negative and strictly below `1.2`. Values
+between `1.0` and `1.2` are accepted and are not silently clipped to `1.0`.
+Normalized historical fleet output can marginally exceed the reported
+monitored-capacity denominator; the accepted wind profile reaches about
+`1.0304`.
 
 ```
 pv_export + pv_to_pump + pv_curtail = pv_available
-p_pump = p_pump_grid + pv_to_pump
+wind_export + wind_to_pump + wind_curtail = wind_available
+p_pump = p_pump_grid + pv_to_pump + wind_to_pump
 p_pump_grid <= effective grid import
-p_turbine + pv_export <= effective grid export
+p_turbine + pv_export + wind_export <= effective grid export
 ```
 
-Unused PV variables and constraints are omitted when `pv_ac_kw = 0`. Result
-columns still exist: PV powers and revenue are exact zeros and the PV price is
-null.
+Only include a source's variables and balance row when that source is enabled.
+The grid-import limit applies to `p_pump_grid`, not renewable energy sent
+directly to pumping. Pump rating and machine-commitment constraints apply to
+total `p_pump`. The turbine rating applies to `p_turbine`. PV and wind
+exports share the site export limit with turbine output.
+
+Unused PV variables and constraints are omitted when `pv_ac_kw = 0`. On
+schema-v1 and schema-v2, result columns still exist: PV powers and revenue
+are exact zeros and the PV price is null. Unused wind variables are omitted
+when `wind_capacity_kw = 0`. Schema-v1 and schema-v2 dispatch tables do not
+contain wind columns. Schema-v3 dispatch includes the wind columns.
+
+There is no artificial epsilon objective or hidden priority between PV and
+wind. When both export prices are equal and a shared constraint binds, the
+source-specific split may be non-unique. Total routing and total site
+revenue remain authoritative.
 
 ## Capacity
 
@@ -182,8 +211,13 @@ secondary objective.
 
 ```
 market_energy_net = energy_gross - grid_charging_cost
-total_site_revenue = market_energy_net + capacity_revenue + pv_revenue
+total_site_revenue = market_energy_net + capacity_revenue + pv_revenue + wind_revenue
 ```
+
+`wind_revenue` is zero when wind is disabled. Renewable energy used for
+pumping has no separate revenue; its value is the avoided grid-charging cost.
+Curtailed renewable energy has no revenue. Do not value renewable
+self-consumption twice.
 
 Capacity revenue is zero for day-ahead. For mFRR and aFRR it comes from solved
 commitments. Quarter-hour `total_revenue_eur` excludes block capacity revenue;
@@ -192,7 +226,7 @@ summary.
 
 ```
 mFRR market_energy_net = mFRR turbine revenue - DA grid-charging cost
-total_site_revenue = market_energy_net + capacity_revenue + pv_revenue
+total_site_revenue = market_energy_net + capacity_revenue + pv_revenue + wind_revenue
 ```
 
 ## aFRR market arrays
@@ -240,14 +274,15 @@ activation bids; the remaining simplification is the missing merit-order depth
 and minute-level activation model.
 
 `MarketDispatchInputs.day_ahead_price_eur_mwh` is an independent copy of the
-unmodified DA series. PV export uses that DA series or a configured fixed
-price, never an aFRR CBMP. PV-to-pump remains behind the meter. The model
-does not pre-reserve the export connection for PV or capacity.
+unmodified DA series. PV and wind exports use that DA series or a configured
+fixed price, never an aFRR CBMP. Renewable energy sent to the pump remains
+behind the meter. The model does not pre-reserve the export connection for
+PV, wind, or capacity.
 
 ```
 aFRR market_energy_net = upward turbine revenue - grid pumping cost
 capacity_revenue = solved upward + solved downward capacity revenue
-total_site_revenue = market_energy_net + capacity_revenue + pv_revenue
+total_site_revenue = market_energy_net + capacity_revenue + pv_revenue + wind_revenue
 ```
 
 Simultaneous pumping and turbining remain permitted and diagnostic. aFRR can

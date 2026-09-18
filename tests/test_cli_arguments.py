@@ -389,6 +389,34 @@ def test_terminal_soc_flags_and_pv_combinations() -> None:
     )
     with pytest.raises(CliError, match="fixed"):
         build_site(missing_price)
+    wind_fixed = parse_args(
+        [
+            "run",
+            "--market",
+            "da",
+            "--delivery-start",
+            "2025-01-15",
+            "--delivery-end",
+            "2025-01-15",
+            "--wind-capacity-kw",
+            "1000",
+            "--wind-profile",
+            "offshore_belgium",
+            "--wind-revenue-mode",
+            "fixed",
+            "--wind-fixed-price-eur-mwh",
+            "12.5",
+            "--data-dir",
+            "data",
+            "--output-dir",
+            "out",
+        ]
+    )
+    wind_site = build_site(wind_fixed)
+    assert wind_site.wind_capacity_kw == 1000.0
+    assert wind_site.wind_profile_id == "offshore_belgium"
+    assert wind_site.wind_revenue_mode == "fixed"
+    assert wind_site.wind_fixed_price_eur_mwh == 12.5
 
 
 def test_da_rejects_balancing_flags() -> None:

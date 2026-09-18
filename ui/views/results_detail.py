@@ -53,10 +53,13 @@ def render_market_detail(
         metrics.append(("Capacity revenue", formatted["capacity"]))
     if child["pv_included"]:
         metrics.append(("PV revenue", formatted["pv"]))
+    if child.get("wind_included"):
+        metrics.append(("Wind revenue", formatted["wind"]))
     render_metric_group(tuple(metrics), key="sib-detail-metrics")
     _render_revenue(child)
     _render_operations(child)
     _render_pv(child)
+    _render_wind(child)
     _render_capacity(child)
     _render_simultaneous(child)
     return selected_market
@@ -118,6 +121,21 @@ def _render_pv(child: Mapping[str, Any]) -> None:
             ("PV self-consumed", formatted["pv_self"]),
             ("PV exported", formatted["pv_export"]),
             ("PV curtailed", formatted["pv_curtail"]),
+        )
+    )
+
+
+def _render_wind(child: Mapping[str, Any]) -> None:
+    if not child.get("wind_included"):
+        return
+    render_section_heading("Wind allocation")
+    formatted = child["formatted"]
+    render_readouts(
+        (
+            ("Available wind", formatted["wind_available"]),
+            ("Wind self-consumed", formatted["wind_self"]),
+            ("Wind exported", formatted["wind_export"]),
+            ("Wind curtailed", formatted["wind_curtail"]),
         )
     )
 

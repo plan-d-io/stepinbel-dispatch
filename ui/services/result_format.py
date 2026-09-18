@@ -97,15 +97,32 @@ def format_bid(value: object) -> str:
     return f"{require_finite(value):,.2f}"
 
 
-def format_pv_capacity(pv_ac_kw: object) -> str:
-    number = require_finite(pv_ac_kw)
+def format_kw_capacity(value: object) -> str:
+    number = require_finite(value)
     if number <= 0:
         return "Off"
-    if number >= 1000:
-        return format_mw(number / 1000.0)
-    if number.is_integer():
+    if float(number).is_integer():
         return f"{int(number):,} kW"
     return f"{number:,.3f} kW"
+
+
+def format_pv_capacity(pv_ac_kw: object, region: object | None = None) -> str:
+    capacity = format_kw_capacity(pv_ac_kw)
+    if capacity == "Off" or region is None:
+        return capacity
+    from ui.services.form import pv_region_label
+
+    return f"{capacity} · {pv_region_label(region)}"
+
+
+def format_wind_capacity(wind_capacity_kw: object, profile_id: object | None = None) -> str:
+    capacity = format_kw_capacity(wind_capacity_kw)
+    if capacity == "Off" or profile_id is None:
+        return capacity
+    from ui.services.form import WIND_PROFILE_LABELS
+
+    label = WIND_PROFILE_LABELS.get(str(profile_id), str(profile_id).replace("_", " ").title())
+    return f"{capacity} · {label}"
 
 
 def format_pump_turbine(pump_mw: object, turbine_mw: object) -> str:
@@ -150,10 +167,36 @@ def format_pv_self_share(
     available: object,
     pv_included: bool,
 ) -> str:
+    return format_self_consumed_share(
+        self_consumed=self_consumed,
+        available=available,
+        included=pv_included,
+    )
+
+
+def format_wind_self_share(
+    *,
+    self_consumed: object,
+    available: object,
+    wind_included: bool,
+) -> str:
+    return format_self_consumed_share(
+        self_consumed=self_consumed,
+        available=available,
+        included=wind_included,
+    )
+
+
+def format_self_consumed_share(
+    *,
+    self_consumed: object,
+    available: object,
+    included: bool,
+) -> str:
     available_n = require_finite(available)
     self_n = require_finite(self_consumed)
     if available_n < 0 or self_n < 0:
-        raise ValueError("pv share")
-    if not pv_included or available_n == 0:
+        raise ValueError("self-consumed share")
+    if not included or available_n == 0:
         return "—"
     return f"{(self_n / available_n) * 100:.1f}%"

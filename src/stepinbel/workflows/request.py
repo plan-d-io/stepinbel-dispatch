@@ -17,6 +17,7 @@ from stepinbel.workflows.constants import (
     BEHAVIOURAL_BASELINE,
     CASE_RUN_REQUEST_SCHEMA_VERSION,
     CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
+    CASE_RUN_REQUEST_SCHEMA_VERSION_V3,
     SUPPORTED_CASE_SCHEMA_VERSIONS,
 )
 from stepinbel.workflows.errors import RunRequestError
@@ -96,6 +97,25 @@ class CaseRunRequest:
         ):
             raise RunRequestError(
                 "schema-v2 requests require at least one enabled machine-commitment option",
+                category="invalid_request",
+            )
+        if (
+            self.request_schema_version in {
+                CASE_RUN_REQUEST_SCHEMA_VERSION,
+                CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
+            }
+            and self.config.wind_enabled()
+        ):
+            raise RunRequestError(
+                "schema-v1 and schema-v2 requests cannot represent enabled co-located wind",
+                category="invalid_request",
+            )
+        if (
+            self.request_schema_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V3
+            and not self.config.wind_enabled()
+        ):
+            raise RunRequestError(
+                "schema-v3 requests require enabled co-located wind",
                 category="invalid_request",
             )
         object.__setattr__(self, "data_directory", require_absolute_path(self.data_directory, "data_directory"))

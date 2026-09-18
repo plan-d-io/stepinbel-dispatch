@@ -7,11 +7,16 @@ overwritten. Source Parquet files are not copied into the run.
 Schema versions:
 
 - `CASE_RUN_REQUEST_SCHEMA_VERSION = 1` for ordinary LP runs. Version `2` is
-  used when a machine-commitment option is enabled.
+  used when a machine-commitment option is enabled and wind is disabled.
+  Version `3` is used whenever co-located wind is enabled, whether the run is
+  a continuous LP or a MILP.
 - `RUN_ARTIFACT_SCHEMA_VERSION = 1` for ordinary LP artifacts. Version `2`
   records MILP termination and gap metadata. A physically valid time-limited
   incumbent is a completed v2 result; it is not recorded as optimal or as
-  accepted within the requested gap.
+  accepted within the requested gap. Version `3` is the wind-enabled artifact
+  contract. It has one fixed key set: machine-commitment and solver MIP fields
+  are always present, and MIP-only diagnostics are explicitly null on
+  continuous LP wind runs.
 - `RUN_STATUS_SCHEMA_VERSION = 1`
 - `RUN_EVENT_SCHEMA_VERSION = 1`
 
@@ -88,20 +93,29 @@ material, not a valid completed bundle.
 `run_metadata.json` records the published-data manifest hash, pipeline
 identity, expected and actual SHA-256 plus manifest and Parquet row counts
 for every table in the published bundle (`da_prices_qh`, `balancing_qh`,
-`capacity_blocks`, `capacity_bids`, `pv_profile_qh`), the accepted PHS
+`capacity_blocks`, `capacity_bids`, `pv_profile_qh`, and `wind_profile_qh` on
+schema-v3 wind-enabled runs), the accepted PHS
 baseline (`phs-mvp-0.1.0` at `82691dad676f85bfd345670fb8022de079ca5578`),
 and the applicable Elia methodology filename and SHA-256 for mFRR or aFRR.
 Those documents are methodology references, not exact
 Watts.Happening-conformance claims. Day-ahead has no applicable Elia
-conformance reference. FCR is not recorded.
+conformance reference. FCR is not recorded. Schema-v1 and schema-v2
+artifacts keep the original five-table published-data identity. Old
+schema-v1 and schema-v2 artifacts remain readable without migration.
 
 Dedicated-market comparison writes a parent directory documented in
 [COMPARISON.md](COMPARISON.md). The parent contains one child directory per
 selected market. Each child remains a separate validated one-case run. Total
-site revenue is energy net plus capacity plus PV. Rankings describe modelled
-alternatives and are not additive.
+site revenue is energy net plus capacity plus PV export, and plus wind export
+when wind is enabled. Rankings describe modelled alternatives and are not
+additive.
 
 Finite asset-parameter sweeps write a parent directory documented in
 [SWEEPS.md](SWEEPS.md). Each candidate remains a separate validated one-case
 run. Ranking uses modelled site revenue before asset costs and is not an
 investment recommendation.
+
+The Streamlit Data explorer can download the displayed week as CSV. That file
+is generated in memory on request for the selected market and complete
+displayed week. It is not written into the run directory, and chart zoom does
+not change the downloaded rows.

@@ -162,6 +162,36 @@ def test_site_pv_fixed_ok() -> None:
     assert site.pv_fixed_price_eur_mwh == 40.0
 
 
+def test_site_wind_fixed_requires_price() -> None:
+    ns = _run_ns("--wind-revenue-mode", "fixed")
+    with pytest.raises(CliError, match="fixed"):
+        build_site(ns)
+
+
+def test_site_wind_price_requires_fixed_mode() -> None:
+    ns = _run_ns("--wind-fixed-price-eur-mwh", "40")
+    with pytest.raises(CliError, match="fixed"):
+        build_site(ns)
+
+
+def test_site_wind_fixed_ok() -> None:
+    ns = _run_ns(
+        "--wind-capacity-kw",
+        "750",
+        "--wind-profile",
+        "onshore_flanders",
+        "--wind-revenue-mode",
+        "fixed",
+        "--wind-fixed-price-eur-mwh",
+        "40",
+    )
+    site = build_site(ns)
+    assert site.wind_capacity_kw == 750.0
+    assert site.wind_profile_id == "onshore_flanders"
+    assert site.wind_revenue_mode == "fixed"
+    assert site.wind_fixed_price_eur_mwh == 40.0
+
+
 def test_solver_options_default() -> None:
     ns = _run_ns()
     assert build_solver_options(ns) == SolverOptions()

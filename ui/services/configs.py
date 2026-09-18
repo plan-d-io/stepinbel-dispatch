@@ -26,6 +26,7 @@ from ui.services.form import (
     coalesce_float,
     optional_float,
     pump_rating,
+    resolve_form_pv_region,
     selected_markets,
     turbine_rating,
 )
@@ -92,13 +93,23 @@ def build_site(form: Mapping[str, Any]) -> SiteConfig:
     pv_enabled = bool(form.get("pv_enabled"))
     mode = "fixed" if form.get("pv_revenue_mode") == "fixed" else "da"
     price = optional_float(form.get("pv_fixed_price"))
+    wind_enabled = bool(form.get("wind_enabled"))
+    wind_mode = "fixed" if form.get("wind_revenue_mode") == "fixed" else "da"
+    wind_price = optional_float(form.get("wind_fixed_price"))
+    wind_profile = form.get("wind_profile_id")
+    if not isinstance(wind_profile, str) or not wind_profile.strip():
+        wind_profile = "onshore_belgium"
     return SiteConfig(
         grid_import_mw=import_mw,
         grid_export_mw=export_mw,
         pv_ac_kw=coalesce_float(form.get("pv_ac_kw"), 0.0) if pv_enabled else 0.0,
-        pv_region="Belgium",
+        pv_region=resolve_form_pv_region(form.get("pv_region")),
         pv_revenue_mode=mode,
         pv_fixed_price_eur_mwh=None if mode != "fixed" else price,
+        wind_capacity_kw=coalesce_float(form.get("wind_capacity_kw"), 0.0) if wind_enabled else 0.0,
+        wind_profile_id=wind_profile,
+        wind_revenue_mode=wind_mode,
+        wind_fixed_price_eur_mwh=None if wind_mode != "fixed" else wind_price,
     )
 
 

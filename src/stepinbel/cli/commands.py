@@ -284,8 +284,10 @@ def _command_data_info(namespace: argparse.Namespace) -> int:
                 "mfrr_capacity": _window_payload(coverage.mfrr_capacity),
                 "afrr_capacity": _window_payload(coverage.afrr_capacity),
                 "pv": _window_payload(coverage.pv),
+                "wind": None if coverage.wind is None else _window_payload(coverage.wind),
             },
             "pv_regions": list(coverage.pv_regions),
+            "wind_profiles": list(coverage.wind_profiles),
         }
     )
 

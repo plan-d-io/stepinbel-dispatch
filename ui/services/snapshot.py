@@ -27,6 +27,8 @@ from ui.services.form import (
     PRESET_2025,
     PRESET_2026,
     PRESET_CUSTOM,
+    PV_REGION_LABELS,
+    WIND_PROFILE_LABELS,
     form_fingerprint,
     has_balancing,
     selected_markets,
@@ -42,6 +44,9 @@ PRE_2025_BALANCING = (
 )
 MARKET_REQUIRED = "Select at least one market."
 FIXED_PV_PRICE_REQUIRED = "Enter a finite fixed PV export price."
+FIXED_WIND_PRICE_REQUIRED = "Enter a finite fixed wind export price."
+WIND_CAPACITY_REQUIRED = "Enter a positive wind capacity."
+WIND_PROFILE_REQUIRED = "Select a supported wind profile."
 EXECUTION_DISABLED_REASON = "Execution and result opening are not connected yet."
 
 
@@ -63,6 +68,28 @@ def lightweight_continue_reason(form: Mapping[str, Any]) -> str | None:
                 return FIXED_PV_PRICE_REQUIRED
         except (TypeError, ValueError):
             return FIXED_PV_PRICE_REQUIRED
+    if form.get("wind_enabled"):
+        capacity = form.get("wind_capacity_kw")
+        try:
+            if (
+                capacity in (None, "")
+                or isinstance(capacity, bool)
+                or not math.isfinite(float(capacity))
+                or float(capacity) <= 0.0
+            ):
+                return WIND_CAPACITY_REQUIRED
+        except (TypeError, ValueError):
+            return WIND_CAPACITY_REQUIRED
+        profile = form.get("wind_profile_id")
+        if not isinstance(profile, str) or profile not in WIND_PROFILE_LABELS:
+            return WIND_PROFILE_REQUIRED
+        if form.get("wind_revenue_mode") == "fixed":
+            price = form.get("wind_fixed_price")
+            try:
+                if price in (None, "") or not math.isfinite(float(price)):
+                    return FIXED_WIND_PRICE_REQUIRED
+            except (TypeError, ValueError):
+                return FIXED_WIND_PRICE_REQUIRED
     return commitment_continue_reason(form)
 
 
@@ -143,6 +170,10 @@ def build_snapshot(form: Mapping[str, Any], *, demo: bool) -> dict[str, Any]:
             "pv_region": site.pv_region,
             "pv_revenue_mode": site.pv_revenue_mode,
             "pv_fixed_price_eur_mwh": site.pv_fixed_price_eur_mwh,
+            "wind_capacity_kw": float(site.wind_capacity_kw),
+            "wind_profile_id": site.wind_profile_id,
+            "wind_revenue_mode": site.wind_revenue_mode,
+            "wind_fixed_price_eur_mwh": site.wind_fixed_price_eur_mwh,
         },
         "balancing": _balancing_snapshot(form),
         "detailed_solver_output": bool(form.get("detailed_solver")),
@@ -219,6 +250,10 @@ _SITE_REQUIRED = (
     "pv_region",
     "pv_revenue_mode",
     "pv_fixed_price_eur_mwh",
+    "wind_capacity_kw",
+    "wind_profile_id",
+    "wind_revenue_mode",
+    "wind_fixed_price_eur_mwh",
 )
 _DERIVED_REQUIRED = (
     "e_max_mwh",
@@ -297,13 +332,28 @@ def _asset_is_valid(asset: object) -> bool:
 def _site_is_valid(site: object) -> bool:
     if not isinstance(site, Mapping) or any(key not in site for key in _SITE_REQUIRED):
         return False
-    if not all(_finite_number(site.get(key)) for key in ("grid_import_mw", "grid_export_mw", "pv_ac_kw")):
+    if not all(
+        _finite_number(site.get(key))
+        for key in ("grid_import_mw", "grid_export_mw", "pv_ac_kw", "wind_capacity_kw")
+    ):
         return False
     if not isinstance(site.get("pv_region"), str) or not site.get("pv_region"):
         return False
+    if float(site.get("pv_ac_kw")) > 0.0 and site.get("pv_region") not in PV_REGION_LABELS:
+        return False
     if site.get("pv_revenue_mode") not in {"da", "fixed"}:
         return False
-    return _optional_finite_number(site.get("pv_fixed_price_eur_mwh"))
+    if not _optional_finite_number(site.get("pv_fixed_price_eur_mwh")):
+        return False
+    profile = site.get("wind_profile_id")
+    if profile is not None and (not isinstance(profile, str) or not profile):
+        return False
+    if float(site.get("wind_capacity_kw")) > 0.0:
+        if not isinstance(profile, str) or profile not in WIND_PROFILE_LABELS:
+            return False
+    if site.get("wind_revenue_mode") not in {"da", "fixed"}:
+        return False
+    return _optional_finite_number(site.get("wind_fixed_price_eur_mwh"))
 
 
 def _balancing_is_valid(snapshot: Mapping[str, Any]) -> bool:
@@ -494,6 +544,8 @@ def review_warnings(snapshot: Mapping[str, Any]) -> list[str]:
             grid_out = float(site.get("grid_export_mw"))
             pv_raw = site.get("pv_ac_kw")
             pv_mw = (0.0 if pv_raw is None else float(pv_raw)) / 1000.0
+            wind_raw = site.get("wind_capacity_kw")
+            wind_mw = (0.0 if wind_raw is None else float(wind_raw)) / 1000.0
         except (TypeError, ValueError):
             return warnings
         if isinstance(asset.get("power_pump_mw"), bool) or isinstance(site.get("grid_import_mw"), bool):
@@ -504,6 +556,8 @@ def review_warnings(snapshot: Mapping[str, Any]) -> list[str]:
             warnings.append("Grid export is below the turbine rating.")
         if pv_mw > grid_out:
             warnings.append("Installed PV exceeds the export-side grid limit.")
+        if wind_mw > grid_out:
+            warnings.append("Installed wind exceeds the export-side grid limit.")
         if period.get("preset") == PRESET_CUSTOM:
             start = parse_iso_date(period.get("start_date"))
             end = parse_iso_date(period.get("end_date"))

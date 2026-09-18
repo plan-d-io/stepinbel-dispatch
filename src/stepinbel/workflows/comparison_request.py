@@ -22,8 +22,10 @@ from stepinbel.workflows.constants import (
     BEHAVIOURAL_BASELINE,
     CASE_RUN_REQUEST_SCHEMA_VERSION,
     CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
+    CASE_RUN_REQUEST_SCHEMA_VERSION_V3,
     MARKET_COMPARISON_REQUEST_SCHEMA_VERSION,
     MARKET_COMPARISON_REQUEST_SCHEMA_VERSION_V2,
+    MARKET_COMPARISON_REQUEST_SCHEMA_VERSION_V3,
     RUN_ARTIFACT_SCHEMA_VERSION,
     SUPPORTED_CASE_SCHEMA_VERSIONS,
     SUPPORTED_COMPARISON_SCHEMA_VERSIONS,
@@ -147,6 +149,11 @@ class MarketComparisonRow:
     simultaneous_interval_count: int
     simultaneous_overlap_mwh: float
     simultaneous_interval_energy_net_eur: float
+    wind_revenue_eur: float = 0.0
+    wind_available_mwh: float = 0.0
+    wind_self_consumed_mwh: float = 0.0
+    wind_exported_mwh: float = 0.0
+    wind_curtailed_mwh: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -422,11 +429,11 @@ def build_market_comparison_request(
             solver_options=solver_options,
             behavioural_baseline=dict(BEHAVIOURAL_BASELINE),
         )
-    parent_request_version = (
-        MARKET_COMPARISON_REQUEST_SCHEMA_VERSION_V2
-        if request_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2
-        else MARKET_COMPARISON_REQUEST_SCHEMA_VERSION
-    )
+    parent_request_version = {
+        CASE_RUN_REQUEST_SCHEMA_VERSION: MARKET_COMPARISON_REQUEST_SCHEMA_VERSION,
+        CASE_RUN_REQUEST_SCHEMA_VERSION_V2: MARKET_COMPARISON_REQUEST_SCHEMA_VERSION_V2,
+        CASE_RUN_REQUEST_SCHEMA_VERSION_V3: MARKET_COMPARISON_REQUEST_SCHEMA_VERSION_V3,
+    }[request_version]
     parent_artifact_version = parent_request_version
     return MarketComparisonRequest(
         comparison_request_schema_version=parent_request_version,

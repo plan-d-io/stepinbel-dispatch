@@ -24,9 +24,11 @@ from stepinbel.reporting.constants import (
 from stepinbel.workflows.constants import (
     ASSET_SWEEP_REQUEST_SCHEMA_VERSION,
     ASSET_SWEEP_REQUEST_SCHEMA_VERSION_V2,
+    ASSET_SWEEP_REQUEST_SCHEMA_VERSION_V3,
     BEHAVIOURAL_BASELINE,
     CASE_RUN_REQUEST_SCHEMA_VERSION,
     CASE_RUN_REQUEST_SCHEMA_VERSION_V2,
+    CASE_RUN_REQUEST_SCHEMA_VERSION_V3,
     MAX_ASSET_SWEEP_CANDIDATES,
     RUN_ARTIFACT_SCHEMA_VERSION,
     SUPPORTED_SWEEP_SCHEMA_VERSIONS,
@@ -296,10 +298,17 @@ class AssetSweepRow:
     simultaneous_interval_count: int
     simultaneous_overlap_mwh: float
     simultaneous_interval_energy_net_eur: float
+    wind_revenue_eur: float = 0.0
+    wind_available_mwh: float = 0.0
+    wind_self_consumed_mwh: float = 0.0
+    wind_exported_mwh: float = 0.0
+    wind_curtailed_mwh: float = 0.0
 
 
-def row_to_payload(row: AssetSweepRow) -> dict[str, object]:
-    return {name: getattr(row, name) for name in ASSET_SWEEP_ROW_FIELDS}
+def row_to_payload(
+    row: AssetSweepRow, fields: tuple[str, ...] = ASSET_SWEEP_ROW_FIELDS
+) -> dict[str, object]:
+    return {name: getattr(row, name) for name in fields}
 
 
 def sweep_stages(candidate_order: Sequence[str]) -> tuple[str, ...]:
@@ -624,11 +633,11 @@ def build_asset_sweep_request(
             solver_options=solver_options,
             behavioural_baseline=dict(BEHAVIOURAL_BASELINE),
         )
-    parent_version = (
-        ASSET_SWEEP_REQUEST_SCHEMA_VERSION_V2
-        if request_version == CASE_RUN_REQUEST_SCHEMA_VERSION_V2
-        else ASSET_SWEEP_REQUEST_SCHEMA_VERSION
-    )
+    parent_version = {
+        CASE_RUN_REQUEST_SCHEMA_VERSION: ASSET_SWEEP_REQUEST_SCHEMA_VERSION,
+        CASE_RUN_REQUEST_SCHEMA_VERSION_V2: ASSET_SWEEP_REQUEST_SCHEMA_VERSION_V2,
+        CASE_RUN_REQUEST_SCHEMA_VERSION_V3: ASSET_SWEEP_REQUEST_SCHEMA_VERSION_V3,
+    }[request_version]
     return AssetSweepRequest(
         asset_sweep_request_schema_version=parent_version,
         asset_sweep_artifact_schema_version=parent_version,

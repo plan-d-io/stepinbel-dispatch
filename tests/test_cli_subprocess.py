@@ -333,8 +333,18 @@ def test_data_info_smoke() -> None:
     obj = json.loads(result.stdout.strip())
     assert obj["ok"] is True
     assert obj["kind"] == "data"
-    assert set(obj["coverage"]) == {"da_prices", "balancing", "mfrr_capacity", "afrr_capacity", "pv"}
+    assert set(obj["coverage"]) == {
+        "da_prices",
+        "balancing",
+        "mfrr_capacity",
+        "afrr_capacity",
+        "pv",
+        "wind",
+    }
+    assert "onshore_belgium" in obj["wind_profiles"]
     # Numbers are not strings
     for source, cov in obj["coverage"].items():
+        if cov is None:
+            continue
         assert isinstance(cov["interval_count"], int), source
         assert isinstance(cov["duration_hours"], float), source

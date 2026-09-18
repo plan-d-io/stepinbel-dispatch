@@ -145,15 +145,26 @@ EXPLORER_GROUP_MAIN = "Main results"
 EXPLORER_GROUP_GRID = "Grid connection loading"
 EXPLORER_GROUP_CAPACITY = "Balancing capacity commitments"
 EXPLORER_PANEL_CAPACITY = "Committed capacity"
+EXPLORER_CSV_LABEL = "Download displayed week (CSV)"
+EXPLORER_CSV_CAPTION = (
+    "Includes all series shown below for the selected market and full displayed week."
+)
 RESULTS_SUBTITLE_MULTI = "Dedicated-market runs for one asset and simulation period."
 RESULTS_SUBTITLE_ONE = "Operational results for one dedicated-market run."
 PV_HELP_OFF = (
     "Optional. Co-located PV can supply pumping, be exported within the grid limit, or be curtailed."
 )
 PV_HELP_ON = (
-    "Uses the Belgian reference PV profile. PV can supply pumping, be exported within the grid "
-    "limit, or be curtailed."
+    "Uses the selected regional PV profile. PV can supply pumping, be exported within the grid "
+    "limit, or be curtailed. Belgium, Flanders, and Wallonia overlap their constituent regions."
 )
+WIND_HELP_OFF = (
+    "Optional. Co-located wind can supply pumping, be exported within the grid limit, or be curtailed."
+)
+WIND_HELP_ON = (
+    "Optional. Co-located wind can supply pumping, be exported within the grid limit, or be curtailed."
+)
+WIND_NOT_INCLUDED_COPY = "Wind was not included in this simulation."
 STEPINBEL_LOGO_NAME = "STEPinBEL-logo2.png"
 STEPINBEL_LOGO_WIDTH_PX = 213
 STEPINBEL_LOGO_HEIGHT_PX = 80
@@ -216,6 +227,9 @@ CHART_TURBINE = "#c45c26"
 CHART_PV = "#c9892b"
 CHART_PV_EXPORT = SUCCESS
 CHART_PV_CURTAIL = TEXT_SECONDARY
+CHART_WIND = "#3d7a5a"
+CHART_WIND_EXPORT = "#2a6f97"
+CHART_WIND_CURTAIL = TEXT_MUTED
 CHART_RESERVOIR = "#2a6f97"
 CHART_PRICE_SELL = SUCCESS
 CHART_PRICE_BUY = DANGER

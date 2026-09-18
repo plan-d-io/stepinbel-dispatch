@@ -98,6 +98,22 @@ def render_run_report(
         f"Effective grid export: {_qty(request.config.effective_grid_export_mw())} MW",
         f"Co-located PV: {_qty(site.pv_ac_kw, 1)} kW AC"
         + (f" ({site.pv_region}, {site.pv_revenue_mode})" if request.config.pv_enabled() else ""),
+    ]
+    if request.config.wind_enabled():
+        lines.append(
+            f"Co-located wind: {_qty(site.wind_capacity_kw, 1)} kW"
+            f" ({site.wind_profile_id}, {site.wind_revenue_mode})"
+        )
+    formula = (
+        "Total site revenue equals market energy net plus capacity revenue plus PV export revenue."
+    )
+    if request.config.wind_enabled():
+        formula = (
+            "Total site revenue equals market energy net plus capacity revenue "
+            "plus PV export revenue plus wind export revenue."
+        )
+    lines.extend(
+        [
         "",
         "Revenue",
         "-------",
@@ -105,7 +121,13 @@ def render_run_report(
         f"Market energy net: {_money(summary.market_energy_net_eur)} EUR",
         f"Capacity revenue: {_money(summary.capacity_revenue_eur)} EUR",
         f"PV export revenue: {_money(summary.pv_revenue_eur)} EUR",
-        "Total site revenue equals market energy net plus capacity revenue plus PV export revenue.",
+        ]
+    )
+    if request.config.wind_enabled():
+        lines.append(f"Wind export revenue: {_money(summary.wind_revenue_eur)} EUR")
+    lines.extend(
+        [
+        formula,
         "",
         "Operations",
         "----------",
@@ -115,6 +137,7 @@ def render_run_report(
         f"Initial reservoir: {_qty(summary.reservoir_initial_mwh)} MWh",
         f"Final reservoir: {_qty(summary.reservoir_final_mwh)} MWh",
     ]
+    )
     if market in {"mfrr", "afrr"}:
         lines.extend(
             [
@@ -138,6 +161,34 @@ def render_run_report(
                 "Self-consumed PV has no separate revenue line; it lowers grid charging cost.",
             ]
         )
+    if request.config.wind_enabled():
+        settlement = (
+            "Day-ahead wind settlement uses day-ahead prices in every market case."
+            if site.wind_revenue_mode == "da"
+            else (
+                "Wind exports settle at the configured fixed price "
+                f"{_qty(site.wind_fixed_price_eur_mwh)} EUR/MWh."
+            )
+        )
+        lines.extend(
+            [
+                "",
+                "Wind",
+                "----",
+                f"Available: {_qty(summary.wind_available_mwh)} MWh",
+                f"Self-consumed: {_qty(summary.wind_self_consumed_mwh)} MWh",
+                f"Exported: {_qty(summary.wind_exported_mwh)} MWh",
+                f"Curtailed: {_qty(summary.wind_curtailed_mwh)} MWh",
+                "Self-consumed wind has no separate revenue line; it lowers grid charging cost.",
+                settlement,
+            ]
+        )
+        if request.config.pv_enabled():
+            lines.append(
+                "When PV and wind export prices are equal and a shared constraint binds, "
+                "the source-specific split may be non-unique. Total routing and total site "
+                "revenue remain authoritative."
+            )
     lines.extend(
         [
             "",

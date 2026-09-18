@@ -54,6 +54,10 @@ CONSTRUCTION_DESTS: frozenset[str] = frozenset(
         "pv_region",
         "pv_revenue_mode",
         "pv_fixed_price_eur_mwh",
+        "wind_capacity_kw",
+        "wind_profile",
+        "wind_revenue_mode",
+        "wind_fixed_price_eur_mwh",
         "detailed_solver_output",
         "fixed_speed_pump",
         "turbine_minimum_output_fraction",
@@ -174,7 +178,7 @@ def _add_asset(parser: argparse.ArgumentParser, *, allow_storage_and_power: bool
 
 
 def _add_site(parser: argparse.ArgumentParser) -> None:
-    site = parser.add_argument_group("site and PV")
+    site = parser.add_argument_group("site, PV, and wind")
     site.add_argument("--grid-import-mw", dest="grid_import_mw", type=float, default=_SUPPRESS)
     site.add_argument("--grid-export-mw", dest="grid_export_mw", type=float, default=_SUPPRESS)
     site.add_argument("--pv-ac-kw", dest="pv_ac_kw", type=float, default=_SUPPRESS)
@@ -183,6 +187,20 @@ def _add_site(parser: argparse.ArgumentParser) -> None:
     site.add_argument(
         "--pv-fixed-price-eur-mwh",
         dest="pv_fixed_price_eur_mwh",
+        type=float,
+        default=_SUPPRESS,
+    )
+    site.add_argument("--wind-capacity-kw", dest="wind_capacity_kw", type=float, default=_SUPPRESS)
+    site.add_argument("--wind-profile", dest="wind_profile", default=_SUPPRESS)
+    site.add_argument(
+        "--wind-revenue-mode",
+        dest="wind_revenue_mode",
+        choices=("da", "fixed"),
+        default=_SUPPRESS,
+    )
+    site.add_argument(
+        "--wind-fixed-price-eur-mwh",
+        dest="wind_fixed_price_eur_mwh",
         type=float,
         default=_SUPPRESS,
     )

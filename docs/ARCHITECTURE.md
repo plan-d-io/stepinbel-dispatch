@@ -50,7 +50,7 @@ The implemented core boundary today includes:
   deterministic ordering, and a complete quarter-hour UTC grid.
 - The shared continuous LP, optional machine-commitment MILP, HiGHS
   production backend, and the day-ahead, mFRR, and aFRR adapters with
-  optional co-located PV.
+  optional co-located PV and wind.
 
 The LP and optional MILP are specified in [MODEL.md](MODEL.md). HiGHS is the
 only backend. The one-case workflow and its audit-artifact contract are
@@ -118,8 +118,13 @@ The Streamlit product uses three user-facing stages:
 2. Review & run
 3. Results
 
-During an active run, stage 2 is the working/progress view. Optional machine
-operating constraints are configured under Advanced asset assumptions. The
+During an active run, stage 2 is the working/progress view. Optional
+co-located wind is configured after PV and stays off by default. Co-located PV
+exposes a regional profile selector with Belgium as the default. Optional
+machine operating constraints remain under Advanced asset assumptions. Results
+include Overview, Market detail, Data explorer, Technical details, and
+Downloads. Data explorer can download the displayed week as CSV for the
+selected market and complete displayed week, independently of chart zoom. The
 interface must label dedicated-market results as alternatives, not additive
 revenue streams.
 

@@ -11,7 +11,7 @@ For a selected period and asset configuration, the simulator should answer:
   day-ahead market?
 - What revenue could it have earned if it had been dedicated to mFRR?
 - What revenue could it have earned if it had been dedicated to aFRR?
-- Which pumping, generating, reservoir, capacity, and optional PV flows produced
+- Which pumping, generating, reservoir, capacity, and optional PV and wind flows produced
   each result?
 - How do the independent market cases compare under the same physical and
   reporting assumptions?
@@ -65,7 +65,11 @@ The target model covers:
 - Pumping and generating efficiencies.
 - Initial and terminal reservoir state.
 - The accepted continuous operating and ramp behaviour from the PHS MVP.
-- Optional co-located PV behind the same grid connection.
+- Optional co-located PV behind the same grid connection, with a selectable
+  regional profile (Belgium by default).
+- Optional co-located wind behind the same grid connection, independently of
+  PV. Four published profiles are available. Wind adds continuous variables
+  only and does not itself select MILP.
 - Explicit grid-import and grid-export limits.
 
 The initial port must reproduce the accepted continuous optimization baseline.
@@ -76,7 +80,8 @@ default. See [MACHINE_COMMITMENT.md](MACHINE_COMMITMENT.md).
 ## Data boundary
 
 The runtime consumes published, validated Parquet files and a manifest copied
-from the PHS project under an explicit porting brief.
+from the PHS project under an explicit porting brief. The current live bundle
+is the accepted six-table vintage, including `wind_profile_qh`.
 
 The following are outside the porting exercise:
 

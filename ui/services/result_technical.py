@@ -25,6 +25,7 @@ from ui.services.result_format import (
     format_percent_fraction,
     format_pump_turbine,
     format_pv_capacity,
+    format_wind_capacity,
     is_finite_number,
     market_label,
     markets_label,
@@ -34,6 +35,11 @@ from ui.services.result_format import (
 
 PV_VALUATION_LABELS = {
     "da": "Day-ahead prices",
+    "fixed": "Fixed price",
+}
+WIND_VALUATION_LABELS = {
+    "da": "Day-ahead prices",
+    "fixed": "Fixed price",
 }
 STORAGE_BASIS_LABELS = {
     "discharge_at_rated": "Discharge at rated turbine output",
@@ -321,6 +327,8 @@ def _configured_groups(
         grid_import = require_finite(resolved.get("effective_grid_import_mw"))
         grid_export = require_finite(resolved.get("effective_grid_export_mw"))
         pv_kw = require_finite(site.get("pv_ac_kw"))
+        wind_raw = site.get("wind_capacity_kw")
+        wind_kw = None if wind_raw is None else require_finite(wind_raw)
         interval_count = require_int(resolved.get("interval_count"))
         round_trip = require_finite(resolved.get("round_trip_efficiency"))
     except (TypeError, ValueError):
@@ -342,9 +350,25 @@ def _configured_groups(
             ("Round-trip efficiency", format_percent_fraction(round_trip)),
         ]
     )
-    site_rows = [("Grid import / export", format_grid(grid_import, grid_export)), ("PV capacity", format_pv_capacity(pv_kw))]
+    site_rows = [
+        ("Grid import / export", format_grid(grid_import, grid_export)),
+        ("PV capacity", format_pv_capacity(pv_kw, site.get("pv_region") if pv_kw > 0 else None)),
+    ]
     if pv_kw > 0:
         site_rows.append(("PV valuation", _friendly_label(site.get("pv_revenue_mode"), PV_VALUATION_LABELS)))
+        price = site.get("pv_fixed_price_eur_mwh")
+        if site.get("pv_revenue_mode") == "fixed" and price is not None:
+            site_rows.append(("PV fixed export price", f"{require_finite(price):,.2f} EUR/MWh"))
+    if wind_kw is not None and wind_kw > 0:
+        site_rows.append(
+            ("Wind", format_wind_capacity(wind_kw, site.get("wind_profile_id")))
+        )
+        site_rows.append(
+            ("Wind valuation", _friendly_label(site.get("wind_revenue_mode"), WIND_VALUATION_LABELS))
+        )
+        wind_price = site.get("wind_fixed_price_eur_mwh")
+        if site.get("wind_revenue_mode") == "fixed" and wind_price is not None:
+            site_rows.append(("Wind fixed export price", f"{require_finite(wind_price):,.2f} EUR/MWh"))
     market_rows = [("Selected market", market_label(_require_str(market_case.get("market"))))]
     if "activation_profile" in market_case:
         market_rows.append(("Balancing strategy", format_balancing(market_case.get("activation_profile"))))
@@ -469,8 +493,16 @@ def _software(metadata: Mapping[str, Any]) -> list[tuple[str, str]]:
 def _solution_checks(metadata: Mapping[str, Any]) -> dict[str, Any]:
     feasibility = _nested(metadata, "feasibility")
     ok = _require_bool(feasibility.get("ok"))
+    fields = list(FEASIBILITY_FIELDS)
+    version = metadata.get("artifact_schema_version")
+    wind_required = type(version) is int and version == 3
+    if wind_required and "max_wind_residual_mw" not in feasibility:
+        _fail()
+    if "max_wind_residual_mw" in feasibility:
+        insert_at = next(index for index, (key, _, _) in enumerate(fields) if key == "max_pv_residual_mw") + 1
+        fields.insert(insert_at, ("max_wind_residual_mw", "Wind residual", "MW"))
     rows: list[dict[str, str]] = []
-    for key, label, unit in FEASIBILITY_FIELDS:
+    for key, label, unit in fields:
         if key not in feasibility:
             _fail()
         try:

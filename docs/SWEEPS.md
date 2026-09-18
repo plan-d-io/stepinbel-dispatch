@@ -1,7 +1,7 @@
 # Finite asset-parameter sweeps
 
 The public sweep workflow evaluates a frozen set of alternative `AssetConfig`
-values for one dedicated market. Period, market case, site, PV, grid
+values for one dedicated market. Period, market case, site, PV, wind, grid
 configuration, published data, solver options, and software identity stay
 fixed. Only the asset configuration changes.
 
@@ -41,8 +41,9 @@ valid when you construct `AssetSweepCandidate` objects directly.
 Schema versions:
 
 - `ASSET_SWEEP_REQUEST_SCHEMA_VERSION = 1` for ordinary LP sweeps. Version `2`
-  is used when the template enables machine commitment.
-- `ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION = 1` or `2`, matching the request.
+  is used when the template enables machine commitment and wind is disabled.
+  Version `3` is used whenever co-located wind is enabled.
+- `ASSET_SWEEP_ARTIFACT_SCHEMA_VERSION = 1`, `2`, or `3`, matching the request.
 - `MAX_ASSET_SWEEP_CANDIDATES = 24`
 
 One sweep covers exactly one market: day-ahead, mFRR, or aFRR. Do not mix
@@ -98,7 +99,11 @@ total_site_revenue_eur
   = market_energy_net_eur
   + capacity_revenue_eur
   + pv_revenue_eur
+  + wind_revenue_eur
 ```
+
+Schema-v3 sweep rows include the wind revenue and energy fields. Schema-v1
+and schema-v2 keep the previous no-wind row contract.
 
 Rows are sorted by descending total site revenue. Exact ties use frozen
 candidate order. Ranks are consecutive from 1 through the candidate count.
@@ -128,4 +133,6 @@ Day-ahead has no applicable Elia conformance reference. mFRR and aFRR reports
 cite the accepted methodology filename and hash. Those documents are not exact
 Watts.Happening-conformance claims. Combined markets, god, active, and FCR
 remain outside scope. Optional machine commitment, when enabled, is copied
-onto every sweep child. The Streamlit application does not expose sweeps.
+onto every sweep child. Optional co-located wind, when enabled, is also copied
+and writes schema-v3 child artifacts. The Streamlit application does not
+expose sweeps.

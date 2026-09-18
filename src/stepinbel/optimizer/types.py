@@ -20,6 +20,7 @@ ACCOUNTING_TOL_EUR = 1e-5
 SIMULTANEOUS_TOL_MW = 1e-6
 PV_ALLOCATION_TOL_MW = 1e-6
 PV_LOAD_FACTOR_TOL = 1e-9
+WIND_LOAD_FACTOR_EXCLUSIVE_MAX = 1.2
 DEFAULT_MIP_REL_GAP = 0.015
 DEFAULT_MIP_TIME_LIMIT_S = 900.0
 HIGHS_RANDOM_SEED = 0
@@ -58,6 +59,20 @@ DISPATCH_COLUMNS: tuple[str, ...] = (
     "market_energy_net_eur",
     "pv_revenue_eur",
     "total_revenue_eur",
+)
+
+WIND_DISPATCH_COLUMNS: tuple[str, ...] = (
+    "wind_available_mw",
+    "wind_to_pump_mw",
+    "wind_export_mw",
+    "wind_curtail_mw",
+    "wind_export_price_eur_mwh",
+    "wind_revenue_eur",
+)
+DISPATCH_COLUMNS_V3: tuple[str, ...] = (
+    *DISPATCH_COLUMNS[:-1],
+    *WIND_DISPATCH_COLUMNS,
+    DISPATCH_COLUMNS[-1],
 )
 
 CAPACITY_RESULT_COLUMNS: tuple[str, ...] = (
@@ -199,6 +214,11 @@ class DispatchSummary:
     simultaneous_overlap_mwh: float
     n_pump_ramp_up_vars: int
     n_turbine_ramp_up_vars: int
+    wind_revenue_eur: float = 0.0
+    wind_available_mwh: float = 0.0
+    wind_self_consumed_mwh: float = 0.0
+    wind_exported_mwh: float = 0.0
+    wind_curtailed_mwh: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -242,6 +262,7 @@ class FeasibilityReport:
     max_summary_accounting_residual_eur: float
     max_objective_residual_eur: float
     ok: bool
+    max_wind_residual_mw: float = 0.0
 
 
 @dataclass(frozen=True)

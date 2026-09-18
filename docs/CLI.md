@@ -82,7 +82,7 @@ stepinbel sweep --request PATH
 A frozen request is authoritative. The CLI does not merge defaults into it and
 does not rewrite the file. `--quiet` may accompany `--request` because it only
 changes console presentation. Data, output, run ID, period, asset, site,
-market, `--markets`, bidding, PV, and solver flags are rejected with
+market, `--markets`, bidding, PV, wind, and solver flags are rejected with
 `--request`. `--markets` may appear at most once. One name is not a
 comparison. Flags for a market that was not selected are rejected.
 
@@ -177,6 +177,31 @@ stepinbel run --market afrr `
   --data-dir data --output-dir outputs/afrr-pv
 ```
 
+`--pv-region` defaults to Belgium when omitted. Wind is optional and off by
+default. `--wind-profile` selects one of `onshore_belgium` (default),
+`offshore_belgium`, `onshore_flanders`, or `onshore_wallonia`.
+
+Day-ahead with co-located wind:
+
+```powershell
+stepinbel run --market da `
+  --delivery-start 2025-01-15 --delivery-end 2025-01-15 `
+  --wind-capacity-kw 1000 --wind-profile onshore_belgium `
+  --wind-revenue-mode da `
+  --data-dir data --output-dir outputs/da-wind
+```
+
+Day-ahead with PV and co-located wind:
+
+```powershell
+stepinbel run --market da `
+  --delivery-start 2025-01-15 --delivery-end 2025-01-15 `
+  --pv-ac-kw 500 --pv-region Belgium --pv-revenue-mode da `
+  --wind-capacity-kw 1000 --wind-profile onshore_belgium `
+  --wind-revenue-mode da `
+  --data-dir data --output-dir outputs/da-pv-wind
+```
+
 Day-ahead with optional machine operating constraints:
 
 ```powershell
@@ -227,3 +252,8 @@ Data coverage inspection:
 ```text
 stepinbel data-info --data-dir data
 ```
+
+`data-info` lists each published table, coverage windows, PV regions, and the
+optional wind coverage window and profile IDs when the bundle contains
+`wind_profile_qh`. Older five-table bundles remain readable; wind coverage is
+then null and the profile list is empty.

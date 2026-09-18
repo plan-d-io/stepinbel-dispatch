@@ -22,6 +22,7 @@ from stepinbel.optimizer.model import SparseModel, build_sparse_model, prepare_p
 from stepinbel.optimizer.types import (
     CAPACITY_RESULT_SCHEMA,
     DISPATCH_COLUMNS,
+    DISPATCH_COLUMNS_V3,
     SIMULTANEOUS_TOL_MW,
     DispatchResult,
     DispatchSummary,
@@ -49,6 +50,7 @@ def solve_case(
     else:
         raise ModelError("unsupported market case")
     pv_factor = _pv_load_factor(data_slice)
+    wind_factor = _wind_load_factor(data_slice)
     timestamps = _timestamps(data_slice)
     return solve_from_inputs(
         config=data_slice.config,
@@ -57,6 +59,7 @@ def solve_case(
         timestamps=timestamps,
         market_inputs=market,
         pv_load_factor=pv_factor,
+        wind_load_factor=wind_factor,
         options=options,
         started=started,
     )
@@ -70,6 +73,7 @@ def solve_from_inputs(
     timestamps: tuple[datetime, ...],
     market_inputs: MarketDispatchInputs,
     pv_load_factor: np.ndarray | None,
+    wind_load_factor: np.ndarray | None = None,
     options: SolverOptions | None = None,
     started: float | None = None,
 ) -> DispatchResult:
@@ -84,7 +88,7 @@ def solve_from_inputs(
         raise ModelError("timestamp count does not match market arrays")
     if period.window.interval_count != market_inputs.interval_count:
         raise ModelError("resolved period does not match market arrays")
-    prepared = prepare_physical(config, market_inputs, pv_load_factor)
+    prepared = prepare_physical(config, market_inputs, pv_load_factor, wind_load_factor)
     resolved = resolve_machine_commitment(config)
     build_started = time.perf_counter()
     model = build_sparse_model(prepared, resolved)
@@ -115,6 +119,10 @@ def _validate_slice(data_slice: MarketDataSlice) -> None:
         raise ModelError("PV is enabled but the data slice has no PV profile")
     if not data_slice.config.pv_enabled() and data_slice.pv_profile is not None:
         raise ModelError("PV profile is present while PV is disabled")
+    if data_slice.config.wind_enabled() and data_slice.wind_profile is None:
+        raise ModelError("wind is enabled but the data slice has no wind profile")
+    if not data_slice.config.wind_enabled() and data_slice.wind_profile is not None:
+        raise ModelError("wind profile is present while wind is disabled")
 
 
 def _timestamps(data_slice: MarketDataSlice) -> tuple[datetime, ...]:
@@ -142,6 +150,19 @@ def _pv_load_factor(data_slice: MarketDataSlice) -> np.ndarray | None:
     return values
 
 
+def _wind_load_factor(data_slice: MarketDataSlice) -> np.ndarray | None:
+    if not data_slice.config.wind_enabled():
+        return None
+    assert data_slice.wind_profile is not None
+    column = data_slice.wind_profile.column("load_factor")
+    if column.null_count:
+        raise MarketInputError("wind load_factor contains null values")
+    values = np.array(column.to_numpy(zero_copy_only=False), dtype=np.float64, copy=True)
+    if values.shape != (data_slice.period.window.interval_count,):
+        raise MarketInputError("wind load_factor length does not match the resolved period")
+    return values
+
+
 def _assemble(
     *,
     config: SimulationConfig,
@@ -165,7 +186,13 @@ def _assemble(
     else:
         pv_rev = np.zeros(n, dtype=np.float64)
         pv_price_col = [None] * n
-    interval_total = energy_net + pv_rev
+    if prepared.wind_enabled:
+        wind_rev = dt * decoded.wind_price * decoded.wind_export
+        wind_price_col: object = decoded.wind_price
+    else:
+        wind_rev = np.zeros(n, dtype=np.float64)
+        wind_price_col = [None] * n
+    interval_total = energy_net + pv_rev + wind_rev
     capacity_rev = 0.0
     committed = decoded.capacity_mw
     if prepared.commitments:
@@ -185,7 +212,9 @@ def _assemble(
         market_energy_net_eur=float(energy_net.sum()),
         capacity_revenue_eur=capacity_rev,
         pv_revenue_eur=float(pv_rev.sum()),
-        total_site_revenue_eur=float(energy_net.sum() + capacity_rev + pv_rev.sum()),
+        total_site_revenue_eur=float(
+            energy_net.sum() + capacity_rev + pv_rev.sum() + wind_rev.sum()
+        ),
         pumped_mwh=float(decoded.p_pump.sum() * dt),
         turbined_mwh=float(decoded.p_turbine.sum() * dt),
         pv_available_mwh=float(decoded.pv_available.sum() * dt),
@@ -200,6 +229,11 @@ def _assemble(
         simultaneous_overlap_mwh=_simultaneous_overlap(decoded.p_pump, decoded.p_turbine, dt),
         n_pump_ramp_up_vars=model.n_pump_ramp_up_vars,
         n_turbine_ramp_up_vars=model.n_turbine_ramp_up_vars,
+        wind_revenue_eur=float(wind_rev.sum()),
+        wind_available_mwh=float(decoded.wind_available.sum() * dt),
+        wind_self_consumed_mwh=float(decoded.wind_to_pump.sum() * dt),
+        wind_exported_mwh=float(decoded.wind_export.sum() * dt),
+        wind_curtailed_mwh=float(decoded.wind_curtail.sum() * dt),
     )
     feasibility = check_solution(
         model,
@@ -209,12 +243,14 @@ def _assemble(
         grid_charging_cost_eur=charging,
         market_energy_net_eur=energy_net,
         pv_revenue_eur=pv_rev,
+        wind_revenue_eur=wind_rev,
         interval_total_eur=interval_total,
         summary_energy_gross=summary.energy_gross_eur,
         summary_charging=summary.grid_charging_cost_eur,
         summary_energy_net=summary.market_energy_net_eur,
         summary_capacity=summary.capacity_revenue_eur,
         summary_pv=summary.pv_revenue_eur,
+        summary_wind=summary.wind_revenue_eur,
         summary_total=summary.total_site_revenue_eur,
     )
     dispatch = _dispatch_table(
@@ -224,9 +260,12 @@ def _assemble(
         decoded=decoded,
         energy_net=energy_net,
         pv_rev=pv_rev,
+        wind_rev=wind_rev,
         interval_total=interval_total,
         pv_price_col=pv_price_col,
+        wind_price_col=wind_price_col,
         pv_enabled=prepared.pv_enabled,
+        wind_enabled=prepared.wind_enabled,
     )
     capacity_results = _capacity_table(prepared.commitments, committed)
     solver = SolverMetadata(
@@ -267,34 +306,45 @@ def _dispatch_table(
     decoded,
     energy_net: np.ndarray,
     pv_rev: np.ndarray,
+    wind_rev: np.ndarray,
     interval_total: np.ndarray,
     pv_price_col: object,
+    wind_price_col: object,
     pv_enabled: bool,
+    wind_enabled: bool,
 ) -> pa.Table:
     n = len(timestamps)
-    table = pa.table(
-        {
-            "datetime_utc": pa.array(list(timestamps), type=pa.timestamp("us", tz="UTC")),
-            "market_sell_price_eur_mwh": sell,
-            "market_buy_price_eur_mwh": buy,
-            "p_pump_mw": decoded.p_pump,
-            "p_pump_grid_mw": decoded.p_pump_grid,
-            "p_turbine_mw": decoded.p_turbine,
-            "reservoir_start_mwh": decoded.energy[:-1],
-            "reservoir_end_mwh": decoded.energy[1:],
-            "pump_ramp_up_mw": decoded.r_up_pump,
-            "turbine_ramp_up_mw": decoded.r_up_turb,
-            "pv_available_mw": decoded.pv_available,
-            "pv_to_pump_mw": decoded.pv_to_pump,
-            "pv_export_mw": decoded.pv_export,
-            "pv_curtail_mw": decoded.pv_curtail,
-            "pv_export_price_eur_mwh": pa.array(pv_price_col, type=pa.float64()),
-            "market_energy_net_eur": energy_net,
-            "pv_revenue_eur": pv_rev,
-            "total_revenue_eur": interval_total,
-        }
-    )
-    if tuple(table.column_names) != DISPATCH_COLUMNS:
+    values: dict[str, object] = {
+        "datetime_utc": pa.array(list(timestamps), type=pa.timestamp("us", tz="UTC")),
+        "market_sell_price_eur_mwh": sell,
+        "market_buy_price_eur_mwh": buy,
+        "p_pump_mw": decoded.p_pump,
+        "p_pump_grid_mw": decoded.p_pump_grid,
+        "p_turbine_mw": decoded.p_turbine,
+        "reservoir_start_mwh": decoded.energy[:-1],
+        "reservoir_end_mwh": decoded.energy[1:],
+        "pump_ramp_up_mw": decoded.r_up_pump,
+        "turbine_ramp_up_mw": decoded.r_up_turb,
+        "pv_available_mw": decoded.pv_available,
+        "pv_to_pump_mw": decoded.pv_to_pump,
+        "pv_export_mw": decoded.pv_export,
+        "pv_curtail_mw": decoded.pv_curtail,
+        "pv_export_price_eur_mwh": pa.array(pv_price_col, type=pa.float64()),
+        "market_energy_net_eur": energy_net,
+        "pv_revenue_eur": pv_rev,
+    }
+    expected_columns = DISPATCH_COLUMNS
+    if wind_enabled:
+        values["wind_available_mw"] = decoded.wind_available
+        values["wind_to_pump_mw"] = decoded.wind_to_pump
+        values["wind_export_mw"] = decoded.wind_export
+        values["wind_curtail_mw"] = decoded.wind_curtail
+        values["wind_export_price_eur_mwh"] = pa.array(wind_price_col, type=pa.float64())
+        values["wind_revenue_eur"] = wind_rev
+        expected_columns = DISPATCH_COLUMNS_V3
+    values["total_revenue_eur"] = interval_total
+    table = pa.table(values)
+    if tuple(table.column_names) != expected_columns:
         raise ModelError("dispatch table columns do not match the published schema")
     if table.num_rows != n:
         raise ModelError("dispatch table row count is wrong")
@@ -306,11 +356,22 @@ def _dispatch_table(
             "pv_curtail_mw",
             "pv_revenue_eur",
         ):
-            values = np.asarray(table.column(name).to_numpy())
-            if np.any(values != 0.0):
+            column_values = np.asarray(table.column(name).to_numpy())
+            if np.any(column_values != 0.0):
                 raise ModelError(f"{name} must be exact zeros when PV is disabled")
         if table.column("pv_export_price_eur_mwh").null_count != n:
             raise ModelError("PV export price must be null when PV is disabled")
+    if wind_enabled:
+        for name in (
+            "wind_available_mw",
+            "wind_to_pump_mw",
+            "wind_export_mw",
+            "wind_curtail_mw",
+            "wind_revenue_eur",
+        ):
+            column_values = np.asarray(table.column(name).to_numpy())
+            if not np.all(np.isfinite(column_values)):
+                raise ModelError(f"{name} must be finite when wind is enabled")
     return table
 
 

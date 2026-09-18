@@ -28,6 +28,8 @@ from ui.services.result_format import (
     format_pv_capacity,
     format_pv_self_share,
     format_storage,
+    format_wind_capacity,
+    format_wind_self_share,
     RESULTS_DISPLAY_MARKETS,
     display_market_keys,
     is_finite_number,
@@ -58,6 +60,13 @@ ROW_FLOAT_FIELDS = (
     "simultaneous_overlap_mwh",
     "simultaneous_interval_energy_net_eur",
     "e_max_mwh",
+)
+WIND_FLOAT_FIELDS = (
+    "wind_revenue_eur",
+    "wind_available_mwh",
+    "wind_self_consumed_mwh",
+    "wind_exported_mwh",
+    "wind_curtailed_mwh",
 )
 CHILD_FLOAT_FIELDS = (
     "total_site_revenue_eur",
@@ -202,6 +211,8 @@ def _normalize_case_row(summary: Mapping[str, Any], market: str) -> dict[str, An
         if key in {"difference_from_highest_eur", "full_cycles", "simultaneous_interval_energy_net_eur"}:
             continue
         row[key] = _finite(summary, key)
+    if "wind_revenue_eur" in summary:
+        row.update(_require_wind_fields(summary))
     return row
 
 
@@ -216,6 +227,8 @@ def _normalize_comparison_row(raw: Mapping[str, Any]) -> dict[str, Any]:
     }
     for key in ROW_FLOAT_FIELDS:
         row[key] = _finite(raw, key)
+    if "wind_revenue_eur" in raw:
+        row.update(_require_wind_fields(raw))
     return row
 
 
@@ -235,6 +248,22 @@ def _header_from_resolved(
     if not isinstance(start, str) or not isinstance(end, str):
         _fail()
     pv_kw = _finite(site, "pv_ac_kw")
+    if pv_kw > 0:
+        try:
+            pv_text = format_pv_capacity(pv_kw, site.get("pv_region") or "Belgium")
+        except ValueError:
+            _fail()
+    else:
+        pv_text = "Off"
+    wind_value = site.get("wind_capacity_kw")
+    wind_text = None
+    if wind_value is not None:
+        wind_kw = _finite(site, "wind_capacity_kw")
+        if wind_kw > 0:
+            try:
+                wind_text = format_wind_capacity(wind_kw, site.get("wind_profile_id"))
+            except ValueError:
+                _fail()
     balancing = None
     if any(item in BALANCING_MARKETS for item in markets):
         profile = activation_profile
@@ -257,7 +286,8 @@ def _header_from_resolved(
             e_max_mwh=resolved.get("e_max_mwh", asset.get("pond_energy_mwh")),
         ),
         "grid": format_grid(site.get("grid_import_mw"), site.get("grid_export_mw")),
-        "pv": format_pv_capacity(pv_kw),
+        "pv": pv_text,
+        "wind": wind_text,
         "balancing": balancing,
         "run_type": "Saved demonstration" if source == "demo" else None,
     }
@@ -266,6 +296,18 @@ def _header_from_resolved(
 def _pv_included(resolved: Mapping[str, Any]) -> bool:
     site = _nested(resolved, "config", "site")
     return _finite(site, "pv_ac_kw") > 0
+
+
+def _wind_included(resolved: Mapping[str, Any]) -> bool:
+    site = _nested(resolved, "config", "site")
+    value = site.get("wind_capacity_kw")
+    if value is None:
+        return False
+    return _finite(site, "wind_capacity_kw") > 0
+
+
+def _require_wind_fields(mapping: Mapping[str, Any]) -> dict[str, float]:
+    return {key: _finite(mapping, key) for key in WIND_FLOAT_FIELDS}
 
 
 def _monthly_series(path: Path) -> dict[str, list[Any]]:
@@ -337,7 +379,25 @@ def _pv_self_share(row: Mapping[str, Any], *, pv_included: bool) -> str:
     raise ResultViewError(ERROR_RESULTS_BODY)
 
 
-def _format_row(row: Mapping[str, Any], *, one_market: bool, pv_included: bool) -> dict[str, Any]:
+def _wind_self_share(row: Mapping[str, Any], *, wind_included: bool) -> str:
+    try:
+        return format_wind_self_share(
+            self_consumed=row["wind_self_consumed_mwh"],
+            available=row["wind_available_mwh"],
+            wind_included=wind_included,
+        )
+    except ValueError:
+        _fail()
+    raise ResultViewError(ERROR_RESULTS_BODY)
+
+
+def _format_row(
+    row: Mapping[str, Any],
+    *,
+    one_market: bool,
+    pv_included: bool,
+    wind_included: bool,
+) -> dict[str, Any]:
     market = str(row["market"])
     rank = int(row["revenue_rank"])
     note = "Highest simulated revenue"
@@ -367,12 +427,20 @@ def _format_row(row: Mapping[str, Any], *, one_market: bool, pv_included: bool) 
         "simul_eur": format_eur(row["simultaneous_interval_energy_net_eur"]),
         "note": note,
     }
+    if wind_included:
+        formatted["wind"] = format_eur(row["wind_revenue_eur"])
+        formatted["wind_amount"] = format_eur_amount(row["wind_revenue_eur"])
+        formatted["wind_self"] = format_mwh(row["wind_self_consumed_mwh"])
+        formatted["wind_self_share"] = _wind_self_share(row, wind_included=True)
+        formatted["wind_export"] = format_mwh(row["wind_exported_mwh"])
+        formatted["wind_curtail"] = format_mwh(row["wind_curtailed_mwh"])
     return {
         "market": market,
         "revenue_rank": rank,
         "has_capacity": market in BALANCING_MARKETS,
         "show_pv": pv_included,
-        "values": {key: row[key] for key in ("total_site_revenue_eur", *ROW_FLOAT_FIELDS, "revenue_rank", "simultaneous_interval_count") if key in row},
+        "show_wind": wind_included,
+        "values": {key: row[key] for key in ("total_site_revenue_eur", *ROW_FLOAT_FIELDS, *WIND_FLOAT_FIELDS, "revenue_rank", "simultaneous_interval_count") if key in row},
         "formatted": formatted,
     }
 
@@ -383,6 +451,7 @@ def _child_display(
     market: str,
     row: Mapping[str, Any],
     pv_included: bool,
+    wind_included: bool,
 ) -> dict[str, Any]:
     summary = _read_json_object(directory / "summary.json")
     resolved = _read_json_object(directory / "resolved_config.json")
@@ -393,36 +462,48 @@ def _child_display(
     values["full_cycles"] = float(row["full_cycles"])
     values["simultaneous_interval_count"] = _integer(summary, "simultaneous_interval_count")
     values["simultaneous_interval_energy_net_eur"] = _energy_net_in_simultaneous(summary)
+    if wind_included:
+        values.update(_require_wind_fields(summary))
     monthly = _monthly_series(directory / "monthly_summary.parquet")
     capacity = _capacity_preview(directory / "capacity.parquet")
+    formatted = {
+        "total": format_eur(values["total_site_revenue_eur"]),
+        "energy": format_eur(values["market_energy_net_eur"]),
+        "capacity": format_eur(values["capacity_revenue_eur"]),
+        "pv": format_eur(values["pv_revenue_eur"]),
+        "pumped": format_mwh(values["pumped_mwh"]),
+        "turbined": format_mwh(values["turbined_mwh"]),
+        "cycles": format_cycles(values["full_cycles"]),
+        "reservoir": format_mwh(values["e_max_mwh"]),
+        "reservoir_initial": format_mwh(values["reservoir_initial_mwh"]),
+        "reservoir_final": format_mwh(values["reservoir_final_mwh"]),
+        "pv_available": format_mwh(values["pv_available_mwh"]),
+        "pv_self": format_mwh(values["pv_self_consumed_mwh"]),
+        "pv_export": format_mwh(values["pv_exported_mwh"]),
+        "pv_curtail": format_mwh(values["pv_curtailed_mwh"]),
+        "simul_n": format_count(values["simultaneous_interval_count"]),
+        "simul_mwh": format_mwh(values["simultaneous_overlap_mwh"]),
+        "simul_eur": format_eur(values["simultaneous_interval_energy_net_eur"]),
+        "capacity_revenue": format_eur(values["capacity_revenue_eur"]),
+        "block_count": format_count(capacity["block_count"]),
+    }
+    if wind_included:
+        formatted["wind"] = format_eur(values["wind_revenue_eur"])
+        formatted["wind_available"] = format_mwh(values["wind_available_mwh"])
+        formatted["wind_self"] = format_mwh(values["wind_self_consumed_mwh"])
+        formatted["wind_export"] = format_mwh(values["wind_exported_mwh"])
+        formatted["wind_curtail"] = format_mwh(values["wind_curtailed_mwh"])
     return {
         "market": market,
         "label": market_label(market),
         "has_capacity": market in BALANCING_MARKETS,
         "pv_included": pv_included,
+        "wind_included": wind_included,
         "values": values,
-        "formatted": {
-            "total": format_eur(values["total_site_revenue_eur"]),
-            "energy": format_eur(values["market_energy_net_eur"]),
-            "capacity": format_eur(values["capacity_revenue_eur"]),
-            "pv": format_eur(values["pv_revenue_eur"]),
-            "pumped": format_mwh(values["pumped_mwh"]),
-            "turbined": format_mwh(values["turbined_mwh"]),
-            "cycles": format_cycles(values["full_cycles"]),
-            "reservoir": format_mwh(values["e_max_mwh"]),
-            "reservoir_initial": format_mwh(values["reservoir_initial_mwh"]),
-            "reservoir_final": format_mwh(values["reservoir_final_mwh"]),
-            "pv_available": format_mwh(values["pv_available_mwh"]),
-            "pv_self": format_mwh(values["pv_self_consumed_mwh"]),
-            "pv_export": format_mwh(values["pv_exported_mwh"]),
-            "pv_curtail": format_mwh(values["pv_curtailed_mwh"]),
-            "simul_n": format_count(values["simultaneous_interval_count"]),
-            "simul_mwh": format_mwh(values["simultaneous_overlap_mwh"]),
-            "simul_eur": format_eur(values["simultaneous_interval_energy_net_eur"]),
-            "capacity_revenue": format_eur(values["capacity_revenue_eur"]),
-            "block_count": format_count(capacity["block_count"]),
-        },
-        "composition": _composition_series(values, market=market, pv_included=pv_included),
+        "formatted": formatted,
+        "composition": _composition_series(
+            values, market=market, pv_included=pv_included, wind_included=wind_included
+        ),
         "monthly": monthly,
         "capacity": capacity,
         "e_max_mwh": values["e_max_mwh"],
@@ -434,6 +515,7 @@ def _composition_series(
     *,
     market: str,
     pv_included: bool,
+    wind_included: bool = False,
 ) -> dict[str, list[Any]]:
     categories = ["Net energy revenue"]
     series = [values["market_energy_net_eur"]]
@@ -443,6 +525,9 @@ def _composition_series(
     if pv_included:
         categories.append("PV revenue")
         series.append(values["pv_revenue_eur"])
+    if wind_included:
+        categories.append("Wind revenue")
+        series.append(values["wind_revenue_eur"])
     return {"categories": categories, "values": series}
 
 
@@ -493,6 +578,11 @@ def read_result_artifacts(
     first_dir = _case_directory(kind, output, selected[0])
     first_resolved = _read_json_object(first_dir / "resolved_config.json")
     pv_included = _pv_included(first_resolved)
+    wind_included = _wind_included(first_resolved)
+    if wind_included:
+        for row in rows:
+            if any(key not in row for key in WIND_FLOAT_FIELDS):
+                _fail()
     activation = None
     balancing_market = next((item for item in selected if item in BALANCING_MARKETS), None)
     if balancing_market is not None:
@@ -513,7 +603,13 @@ def read_result_artifacts(
         activation_profile=activation,
     )
     formatted_rows = [
-        _format_row(row, one_market=len(selected) == 1, pv_included=pv_included) for row in rows
+        _format_row(
+            row,
+            one_market=len(selected) == 1,
+            pv_included=pv_included,
+            wind_included=wind_included,
+        )
+        for row in rows
     ]
     children: dict[str, Any] = {}
     for row in rows:
@@ -524,6 +620,7 @@ def read_result_artifacts(
             market=market,
             row=row,
             pv_included=pv_included,
+            wind_included=wind_included,
         )
     highest_row = next(item for item in formatted_rows if item["market"] == highest)
     return {
@@ -533,6 +630,7 @@ def read_result_artifacts(
         "markets": display_markets,
         "highest_revenue_market": highest,
         "pv_included": pv_included,
+        "wind_included": wind_included,
         "header": header,
         "rows": formatted_rows,
         "children": children,

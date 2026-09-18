@@ -17,7 +17,11 @@ def user_facing_error(exc: BaseException) -> str:
         return "Published market data could not be opened. Check the data directory."
     if isinstance(exc, DataAccessError):
         if "not fully covered" in first:
+            if "wind_profile_qh" in first:
+                return "The selected period is not fully covered for the chosen wind data."
             return "The selected period is not fully covered for the chosen markets or PV."
+        if "wind_profile_id" in first or "wind_profile_qh" in first:
+            return first
         return first
     if isinstance(exc, RunRequestError):
         return first

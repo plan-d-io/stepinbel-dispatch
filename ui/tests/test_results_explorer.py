@@ -657,6 +657,8 @@ def test_preview_and_canvas_use_explorer_headings() -> None:
     assert "Balancing capacity commitments" in canvas
     assert "Day-ahead" in canvas
     assert "This complete week contains 672 quarter-hours." in canvas
+    assert "Download displayed week (CSV)" in canvas
+    assert "Includes all series shown below for the selected market and full displayed week." in canvas
     assert "hourly display sample from a complete stored week" not in canvas.lower()
     assert "versus Belgian local time" not in canvas
     assert "Highest simulated total site revenue" not in canvas
@@ -664,8 +666,11 @@ def test_preview_and_canvas_use_explorer_headings() -> None:
     plan = (ROOT / "ui" / "PLAN.md").read_text(encoding="utf-8")
     context = (ROOT / "ui" / "STREAMLIT_AGENT_CONTEXT.md").read_text(encoding="utf-8")
     assert "shared-x Plotly subplot figure" in plan
+    assert "Download displayed week (CSV)" in plan
     assert "Main results" in plan
     assert "matched x-axes" in context
+    assert "Download displayed week (CSV)" in context
+    assert "on_click=" in context
     assert "Do not add a separate highest-revenue" in context
     assert "versus Belgian local time" in context
 

@@ -38,8 +38,10 @@ run = execute_market_comparison(request)
 Schema versions:
 
 - `MARKET_COMPARISON_REQUEST_SCHEMA_VERSION = 1` for ordinary LP comparisons.
-  Version `2` is used when a child case enables machine commitment.
-- `MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION = 1` or `2`, matching the request.
+  Version `2` is used when a child case enables machine commitment and wind
+  is disabled. Version `3` is used whenever co-located wind is enabled.
+- `MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION = 1`, `2`, or `3`, matching the
+  request. Schema-v3 comparison rows add wind revenue and energy fields.
 
 `validate_market_comparison_artifacts` independently reconstructs ranking from
 the selected child `summary.json` files and the frozen comparison request. The
@@ -84,7 +86,11 @@ total_site_revenue_eur
   = market_energy_net_eur
   + capacity_revenue_eur
   + pv_revenue_eur
+  + wind_revenue_eur
 ```
+
+`wind_revenue_eur` is present on schema-v3 comparisons. On schema-v1 and
+schema-v2 it is omitted; those totals remain energy net plus capacity plus PV.
 
 Rows are sorted by descending total site revenue. Exact ties use canonical
 order `da`, `mfrr`, `afrr` among the selected markets. Ranks are consecutive
@@ -116,5 +122,6 @@ conformance reference. Child metadata remains authoritative for each selected
 market’s methodology reference. Those documents are not exact
 Watts.Happening-conformance claims. Combined markets and FCR remain outside
 scope. Optional machine commitment, when enabled, is applied identically to
-every dedicated-market child. The Streamlit application presents the same
-public workflows.
+every dedicated-market child. Optional co-located wind, when enabled, is also
+applied identically and writes schema-v3 child artifacts. The Streamlit
+application presents the same public workflows.

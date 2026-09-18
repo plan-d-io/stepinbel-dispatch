@@ -3,6 +3,7 @@
 *.py text eol=lf
 *.toml text eol=lf
 *.json text eol=lf
+data/MANIFEST.json binary
 *.csv text eol=lf
 *.parquet binary
 *.png binary

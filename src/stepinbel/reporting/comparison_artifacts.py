@@ -27,6 +27,8 @@ from stepinbel.reporting.constants import (
     MANIFEST_EXCLUDED,
     MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
     MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2,
+    MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V3,
+    comparison_row_fields_for,
 )
 from stepinbel.reporting.io import (
     ArtifactError,
@@ -98,8 +100,10 @@ from stepinbel.workflows.request import serialize_case_run_request
 from stepinbel.workflows.serialize import format_utc
 
 
-def row_to_payload(row: MarketComparisonRow) -> dict[str, object]:
-    return {name: getattr(row, name) for name in COMPARISON_ROW_FIELDS}
+def row_to_payload(
+    row: MarketComparisonRow, fields: tuple[str, ...] = COMPARISON_ROW_FIELDS
+) -> dict[str, object]:
+    return {name: getattr(row, name) for name in fields}
 
 
 def _selected_markets(keys: object, field: str) -> tuple[str, ...]:
@@ -145,6 +149,12 @@ def _require_finite_number(value: object, field: str) -> float:
     if not math.isfinite(number):
         raise ArtifactError(f"{field} must be a finite number")
     return number
+
+
+def _optional_summary_float(summary: Mapping[str, Any], name: str, prefix: str) -> float:
+    if name not in summary:
+        return 0.0
+    return _require_finite_number(summary[name], f"{prefix}.{name}")
 
 
 def _require_int(value: object, field: str) -> int:
@@ -213,6 +223,13 @@ def _row_from_summary(
             diagnostics["simultaneous_interval_energy_net_eur"],
             f"{market}.simultaneous_interval_energy_net_eur",
         ),
+        wind_revenue_eur=_optional_summary_float(summary, "wind_revenue_eur", market),
+        wind_available_mwh=_optional_summary_float(summary, "wind_available_mwh", market),
+        wind_self_consumed_mwh=_optional_summary_float(
+            summary, "wind_self_consumed_mwh", market
+        ),
+        wind_exported_mwh=_optional_summary_float(summary, "wind_exported_mwh", market),
+        wind_curtailed_mwh=_optional_summary_float(summary, "wind_curtailed_mwh", market),
     )
 
 
@@ -269,8 +286,22 @@ def ranked_rows_from_case_runs(
     return comparison_rows_from_child_summaries(summaries, ids)
 
 
-def _is_comparison_v2(request: MarketComparisonRequest) -> bool:
-    return request.comparison_artifact_schema_version == MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2
+def _uses_solver_metadata(request: MarketComparisonRequest) -> bool:
+    return request.comparison_artifact_schema_version in {
+        MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2,
+        MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V3,
+    }
+
+
+def _child_solver_fields(run: CaseRun) -> dict[str, object]:
+    diagnostics = dict(run.result.solver.diagnostics)
+    if run.request.config.machine_commitment.physically_active():
+        return _mip_fields_from_diagnostics(diagnostics)
+    return {
+        "termination": diagnostics.get("termination", "lp_optimum"),
+        "requested_mip_gap": None,
+        "achieved_mip_gap": None,
+    }
 
 
 def _mip_fields_from_diagnostics(diagnostics: Mapping[str, Any]) -> dict[str, object]:
@@ -303,6 +334,7 @@ def write_comparison_artifacts(
     rows: Sequence[MarketComparisonRow],
     highest_revenue_market: str,
 ) -> None:
+    fields = comparison_row_fields_for(request.comparison_artifact_schema_version)
     start, end = next(iter(request.case_requests.values())).config.period.to_utc_bounds()
     first_row = rows[0]
     summary = {
@@ -315,18 +347,18 @@ def write_comparison_artifacts(
         "duration_hours": first_row.duration_hours,
         "highest_revenue_market": highest_revenue_market,
         "interpretation": COMPARISON_INTERPRETATION,
-        "rows": [row_to_payload(row) for row in rows],
+        "rows": [row_to_payload(row, fields) for row in rows],
     }
     atomic_write_json(run_dir / "comparison_summary.json", summary)
     atomic_write_csv(
         run_dir / "comparison_summary.csv",
-        COMPARISON_ROW_FIELDS,
-        [[getattr(row, name) for name in COMPARISON_ROW_FIELDS] for row in rows],
+        fields,
+        [[getattr(row, name) for name in fields] for row in rows],
     )
     selected = tuple(request.case_requests)
     children: dict[str, object] = {}
-    is_v2 = _is_comparison_v2(request)
-    warning = _mip_warning_from_case_runs(case_runs) if is_v2 else None
+    uses_solver_metadata = _uses_solver_metadata(request)
+    warning = _mip_warning_from_case_runs(case_runs) if uses_solver_metadata else None
     for market in selected:
         manifest = case_runs[market].directory / MANIFEST_EXCLUDED
         record: dict[str, object] = {
@@ -337,8 +369,8 @@ def write_comparison_artifacts(
             "artifact_manifest_byte_size": manifest.stat().st_size,
             "artifact_manifest_sha256": sha256_file(manifest),
         }
-        if is_v2:
-            record.update(_mip_fields_from_diagnostics(case_runs[market].result.solver.diagnostics))
+        if uses_solver_metadata:
+            record.update(_child_solver_fields(case_runs[market]))
         children[market] = record
     metadata = {
         "comparison_request_schema_version": request.comparison_request_schema_version,
@@ -358,7 +390,7 @@ def write_comparison_artifacts(
         "dedicated_alternatives_statement": COMPARISON_INTERPRETATION,
         "children": children,
     }
-    if is_v2:
+    if uses_solver_metadata:
         metadata["mip_termination_warning"] = warning
     atomic_write_json(run_dir / "comparison_metadata.json", metadata)
     atomic_write_text(
@@ -489,9 +521,11 @@ def _validate_parent_tree(directory: Path, markets: tuple[str, ...]) -> None:
         raise ArtifactError("unexpected subdirectory in the comparison directory")
 
 
-def _validate_csv_rows(path: Path, rows: Sequence[MarketComparisonRow]) -> None:
+def _validate_csv_rows(
+    path: Path, rows: Sequence[MarketComparisonRow], fields: tuple[str, ...]
+) -> None:
     headers, data = _read_csv(path)
-    if tuple(headers) != COMPARISON_ROW_FIELDS:
+    if tuple(headers) != fields:
         raise ArtifactError(f"{path.name} headers do not match the row contract")
     if len(data) != len(rows):
         raise ArtifactError(f"{path.name} row count is wrong")
@@ -500,7 +534,7 @@ def _validate_csv_rows(path: Path, rows: Sequence[MarketComparisonRow]) -> None:
         if len(row) != width:
             raise ArtifactError(f"{path.name} row {i} does not have {width} cells")
         expected = rows[i]
-        for j, name in enumerate(COMPARISON_ROW_FIELDS):
+        for j, name in enumerate(fields):
             if row[j] != csv_cell(getattr(expected, name)):
                 raise ArtifactError(f"{path.name} {name}[{i}] does not match")
 
@@ -594,8 +628,9 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
         child_ids[market] = frozen.run_id
 
     rows, highest = comparison_rows_from_child_summaries(child_summaries, child_ids)
+    fields = comparison_row_fields_for(request.comparison_artifact_schema_version)
     for row in rows:
-        for name in COMPARISON_ROW_FIELDS:
+        for name in fields:
             value = getattr(row, name)
             if isinstance(value, (int, float)) and not isinstance(value, bool):
                 if not math.isfinite(float(value)):
@@ -614,15 +649,15 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
         "duration_hours": float(rows[0].duration_hours),
         "highest_revenue_market": highest,
         "interpretation": COMPARISON_INTERPRETATION,
-        "rows": [row_to_payload(row) for row in rows],
+        "rows": [row_to_payload(row, fields) for row in rows],
     }
     _values_match_exactly(summary, expected_summary, "comparison_summary.json")
-    _validate_csv_rows(directory / "comparison_summary.csv", rows)
+    _validate_csv_rows(directory / "comparison_summary.csv", rows, fields)
 
     metadata = _read_json(directory / "comparison_metadata.json")
-    is_v2 = _is_comparison_v2(request)
-    metadata_keys = COMPARISON_METADATA_KEYS_V2 if is_v2 else COMPARISON_METADATA_KEYS
-    child_keys = COMPARISON_CHILD_METADATA_KEYS_V2 if is_v2 else COMPARISON_CHILD_METADATA_KEYS
+    uses_solver_metadata = _uses_solver_metadata(request)
+    metadata_keys = COMPARISON_METADATA_KEYS_V2 if uses_solver_metadata else COMPARISON_METADATA_KEYS
+    child_keys = COMPARISON_CHILD_METADATA_KEYS_V2 if uses_solver_metadata else COMPARISON_CHILD_METADATA_KEYS
     _require_exact_keys(metadata, metadata_keys, "comparison_metadata.json")
     _require_typed_int(
         metadata.get("comparison_request_schema_version"),
@@ -704,13 +739,16 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
             "artifact_manifest_byte_size": size,
             "artifact_manifest_sha256": digest,
         }
-        if is_v2:
+        if uses_solver_metadata:
             child_solver = _read_json(directory / "cases" / market / "run_metadata.json").get("solver")
             if not isinstance(child_solver, dict):
                 raise ArtifactError(f"cases/{market}/run_metadata.json solver is missing")
             termination = child_solver.get("termination")
-            if termination not in USABLE_MILP_TERMINATIONS:
-                raise ArtifactError(f"cases/{market} termination is not a usable MILP result")
+            if request.case_requests[market].config.machine_commitment.physically_active():
+                if termination not in USABLE_MILP_TERMINATIONS:
+                    raise ArtifactError(f"cases/{market} termination is not a usable MILP result")
+            elif termination != "lp_optimum":
+                raise ArtifactError(f"cases/{market} termination is not lp_optimum")
             child_terminations.append(termination)
             expected_child.update(_mip_fields_from_diagnostics(child_solver))
         _require_typed_int(
@@ -736,8 +774,10 @@ def _validate_market_comparison_artifacts(directory: Path) -> Mapping[str, Path]
             f"comparison_metadata.json children[{market}]",
         )
 
-    expected_warning = _mip_warning_from_terminations(child_terminations) if is_v2 else None
-    if is_v2 and metadata.get("mip_termination_warning") != expected_warning:
+    expected_warning = (
+        _mip_warning_from_terminations(child_terminations) if uses_solver_metadata else None
+    )
+    if uses_solver_metadata and metadata.get("mip_termination_warning") != expected_warning:
         raise ArtifactError("comparison_metadata.json mip_termination_warning is wrong")
 
     expected_report = render_market_comparison_report(

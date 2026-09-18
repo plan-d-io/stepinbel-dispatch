@@ -9,7 +9,12 @@ import numpy as np
 from stepinbel.config import SimulationConfig
 from stepinbel.markets.base import MarketDispatchInputs
 from stepinbel.optimizer.commitment import ResolvedCommitment
-from stepinbel.optimizer.types import DT_H, CapacityCommitment, ModelError
+from stepinbel.optimizer.types import (
+    DT_H,
+    WIND_LOAD_FACTOR_EXCLUSIVE_MAX,
+    CapacityCommitment,
+    ModelError,
+)
 
 _INF = 1.0e30
 
@@ -18,6 +23,7 @@ _INF = 1.0e30
 class VariableLayout:
     n: int
     pv_enabled: bool
+    wind_enabled: bool
     use_r_pump: bool
     use_r_turb: bool
     n_commitments: int
@@ -28,6 +34,9 @@ class VariableLayout:
     idx_pv_export: int | None
     idx_pv_to_pump: int | None
     idx_pv_curtail: int | None
+    idx_wind_export: int | None
+    idx_wind_to_pump: int | None
+    idx_wind_curtail: int | None
     idx_r_pump: int | None
     idx_r_turb: int | None
     idx_capacity: int | None
@@ -60,6 +69,9 @@ class PreparedPhysical:
     pv_enabled: bool
     pv_available_mw: np.ndarray
     pv_export_price: np.ndarray
+    wind_enabled: bool
+    wind_available_mw: np.ndarray
+    wind_export_price: np.ndarray
     commitments: tuple[CapacityCommitment, ...]
 
 
@@ -89,6 +101,7 @@ def prepare_physical(
     config: SimulationConfig,
     market: MarketDispatchInputs,
     pv_load_factor: np.ndarray | None,
+    wind_load_factor: np.ndarray | None = None,
 ) -> PreparedPhysical:
     n = market.interval_count
     asset = config.asset
@@ -100,30 +113,14 @@ def prepare_physical(
     grid_import = float(config.effective_grid_import_mw())
     grid_export = float(config.effective_grid_export_mw())
     pv_enabled = config.pv_enabled()
-    if pv_enabled:
-        if pv_load_factor is None:
-            raise ModelError("PV is enabled but no load-factor series was provided")
-        factor = np.array(pv_load_factor, dtype=np.float64, copy=True)
-        if factor.shape != (n,):
-            raise ModelError("PV load_factor length must match the market horizon")
-        if not np.all(np.isfinite(factor)):
-            raise ModelError("PV load_factor contains NaN or infinite values")
-        if np.any(factor < -1e-9) or np.any(factor > 1.0 + 1e-9):
-            raise ModelError("PV load_factor must be in [0, 1]")
-        factor = np.clip(factor, 0.0, 1.0)
-        avail = factor * (float(config.site.pv_ac_kw) / 1000.0)
-        if config.site.pv_revenue_mode == "fixed":
-            assert config.site.pv_fixed_price_eur_mwh is not None
-            price = np.full(n, float(config.site.pv_fixed_price_eur_mwh), dtype=np.float64)
-        else:
-            price = np.array(market.day_ahead_price_eur_mwh, dtype=np.float64, copy=True)
+    wind_enabled = config.wind_enabled()
+    renewables = pv_enabled or wind_enabled
+    pv_avail, pv_price = _prepare_pv_series(config, market, pv_load_factor, n)
+    wind_avail, wind_price = _prepare_wind_series(config, market, wind_load_factor, n)
+    if renewables:
         pump_bound = np.minimum(market.buy_upper_mw, float(asset.power_pump_mw))
         turbine_bound = np.minimum(market.sell_upper_mw, float(asset.power_turbine_mw))
     else:
-        if pv_load_factor is not None:
-            raise ModelError("PV load_factor was supplied while PV is disabled")
-        avail = np.zeros(n, dtype=np.float64)
-        price = np.full(n, np.nan, dtype=np.float64)
         pump_bound = np.minimum(market.buy_upper_mw, grid_import)
         turbine_bound = np.minimum(market.sell_upper_mw, grid_export)
 
@@ -139,8 +136,10 @@ def prepare_physical(
             )
     pump_bound.setflags(write=False)
     turbine_bound.setflags(write=False)
-    avail.setflags(write=False)
-    price.setflags(write=False)
+    pv_avail.setflags(write=False)
+    pv_price.setflags(write=False)
+    wind_avail.setflags(write=False)
+    wind_price.setflags(write=False)
     return PreparedPhysical(
         n=n,
         dt_h=DT_H,
@@ -162,10 +161,72 @@ def prepare_physical(
         grid_import_mw=grid_import,
         grid_export_mw=grid_export,
         pv_enabled=pv_enabled,
-        pv_available_mw=avail,
-        pv_export_price=price,
+        pv_available_mw=pv_avail,
+        pv_export_price=pv_price,
+        wind_enabled=wind_enabled,
+        wind_available_mw=wind_avail,
+        wind_export_price=wind_price,
         commitments=market.capacity_commitments,
     )
+
+
+def _prepare_pv_series(
+    config: SimulationConfig,
+    market: MarketDispatchInputs,
+    pv_load_factor: np.ndarray | None,
+    n: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    if not config.pv_enabled():
+        if pv_load_factor is not None:
+            raise ModelError("PV load_factor was supplied while PV is disabled")
+        return np.zeros(n, dtype=np.float64), np.full(n, np.nan, dtype=np.float64)
+    if pv_load_factor is None:
+        raise ModelError("PV is enabled but no load-factor series was provided")
+    factor = np.array(pv_load_factor, dtype=np.float64, copy=True)
+    if factor.shape != (n,):
+        raise ModelError("PV load_factor length must match the market horizon")
+    if not np.all(np.isfinite(factor)):
+        raise ModelError("PV load_factor contains NaN or infinite values")
+    if np.any(factor < -1e-9) or np.any(factor > 1.0 + 1e-9):
+        raise ModelError("PV load_factor must be in [0, 1]")
+    factor = np.clip(factor, 0.0, 1.0)
+    avail = factor * (float(config.site.pv_ac_kw) / 1000.0)
+    if config.site.pv_revenue_mode == "fixed":
+        assert config.site.pv_fixed_price_eur_mwh is not None
+        price = np.full(n, float(config.site.pv_fixed_price_eur_mwh), dtype=np.float64)
+    else:
+        price = np.array(market.day_ahead_price_eur_mwh, dtype=np.float64, copy=True)
+    return avail, price
+
+
+def _prepare_wind_series(
+    config: SimulationConfig,
+    market: MarketDispatchInputs,
+    wind_load_factor: np.ndarray | None,
+    n: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    if not config.wind_enabled():
+        if wind_load_factor is not None:
+            raise ModelError("wind load_factor was supplied while wind is disabled")
+        return np.zeros(n, dtype=np.float64), np.full(n, np.nan, dtype=np.float64)
+    if wind_load_factor is None:
+        raise ModelError("wind is enabled but no load-factor series was provided")
+    factor = np.array(wind_load_factor, dtype=np.float64, copy=True)
+    if factor.shape != (n,):
+        raise ModelError("wind load_factor length must match the market horizon")
+    if not np.all(np.isfinite(factor)):
+        raise ModelError("wind load_factor contains NaN or infinite values")
+    if np.any(factor < 0.0):
+        raise ModelError("wind load_factor must be non-negative")
+    if np.any(factor >= WIND_LOAD_FACTOR_EXCLUSIVE_MAX):
+        raise ModelError("wind load_factor must be < 1.2")
+    avail = factor * (float(config.site.wind_capacity_kw) / 1000.0)
+    if config.site.wind_revenue_mode == "fixed":
+        assert config.site.wind_fixed_price_eur_mwh is not None
+        price = np.full(n, float(config.site.wind_fixed_price_eur_mwh), dtype=np.float64)
+    else:
+        price = np.array(market.day_ahead_price_eur_mwh, dtype=np.float64, copy=True)
+    return avail, price
 
 
 def _layout(
@@ -184,14 +245,23 @@ def _layout(
     idx_e = idx
     idx += n + 1
     idx_pump_grid = idx_pv_export = idx_pv_to_pump = idx_pv_curtail = None
-    if prepared.pv_enabled:
+    idx_wind_export = idx_wind_to_pump = idx_wind_curtail = None
+    if prepared.pv_enabled or prepared.wind_enabled:
         idx_pump_grid = idx
         idx += n
+    if prepared.pv_enabled:
         idx_pv_export = idx
         idx += n
         idx_pv_to_pump = idx
         idx += n
         idx_pv_curtail = idx
+        idx += n
+    if prepared.wind_enabled:
+        idx_wind_export = idx
+        idx += n
+        idx_wind_to_pump = idx
+        idx += n
+        idx_wind_curtail = idx
         idx += n
     idx_r_pump = None
     if use_r_pump:
@@ -216,6 +286,7 @@ def _layout(
     return VariableLayout(
         n=n,
         pv_enabled=prepared.pv_enabled,
+        wind_enabled=prepared.wind_enabled,
         use_r_pump=use_r_pump,
         use_r_turb=use_r_turb,
         n_commitments=n_c,
@@ -226,6 +297,9 @@ def _layout(
         idx_pv_export=idx_pv_export,
         idx_pv_to_pump=idx_pv_to_pump,
         idx_pv_curtail=idx_pv_curtail,
+        idx_wind_export=idx_wind_export,
+        idx_wind_to_pump=idx_wind_to_pump,
+        idx_wind_curtail=idx_wind_curtail,
         idx_r_pump=idx_r_pump,
         idx_r_turb=idx_r_turb,
         idx_capacity=idx_capacity,
@@ -275,7 +349,7 @@ def build_sparse_model(
     col_upper[layout.idx_turb : layout.idx_turb + n] = prepared.turbine_bound_mw
     col_upper[layout.idx_e : layout.idx_e + n + 1] = prepared.e_max_mwh
 
-    grid_col = layout.idx_pump if not prepared.pv_enabled else layout.idx_pump_grid
+    grid_col = layout.idx_pump if layout.idx_pump_grid is None else layout.idx_pump_grid
     assert grid_col is not None
     col_cost[layout.idx_turb : layout.idx_turb + n] = prepared.sell_price * dt
     col_cost[grid_col : grid_col + n] = -prepared.buy_price * dt
@@ -344,32 +418,65 @@ def build_sparse_model(
         matrix.put(layout.idx_turb + t, row, -1.0)
         row += 1
 
-    if prepared.pv_enabled:
+    if prepared.pv_enabled or prepared.wind_enabled:
         assert layout.idx_pump_grid is not None
-        assert layout.idx_pv_export is not None
-        assert layout.idx_pv_to_pump is not None
-        assert layout.idx_pv_curtail is not None
         for t in range(n):
             col_upper[layout.idx_pump_grid + t] = min(
                 float(prepared.pump_bound_mw[t]), prepared.grid_import_mw
             )
-        col_upper[layout.idx_pv_export : layout.idx_pv_export + n] = _INF
-        col_upper[layout.idx_pv_to_pump : layout.idx_pv_to_pump + n] = _INF
-        col_upper[layout.idx_pv_curtail : layout.idx_pv_curtail + n] = _INF
-        col_cost[layout.idx_pv_export : layout.idx_pv_export + n] = (
-            prepared.pv_export_price * dt
-        )
+        if prepared.pv_enabled:
+            assert layout.idx_pv_export is not None
+            assert layout.idx_pv_to_pump is not None
+            assert layout.idx_pv_curtail is not None
+            col_upper[layout.idx_pv_export : layout.idx_pv_export + n] = _INF
+            col_upper[layout.idx_pv_to_pump : layout.idx_pv_to_pump + n] = _INF
+            col_upper[layout.idx_pv_curtail : layout.idx_pv_curtail + n] = _INF
+            col_cost[layout.idx_pv_export : layout.idx_pv_export + n] = (
+                prepared.pv_export_price * dt
+            )
+        if prepared.wind_enabled:
+            assert layout.idx_wind_export is not None
+            assert layout.idx_wind_to_pump is not None
+            assert layout.idx_wind_curtail is not None
+            col_upper[layout.idx_wind_export : layout.idx_wind_export + n] = _INF
+            col_upper[layout.idx_wind_to_pump : layout.idx_wind_to_pump + n] = _INF
+            col_upper[layout.idx_wind_curtail : layout.idx_wind_curtail + n] = _INF
+            col_cost[layout.idx_wind_export : layout.idx_wind_export + n] = (
+                prepared.wind_export_price * dt
+            )
         for t in range(n):
-            matrix.put(layout.idx_pv_export + t, row, 1.0)
-            matrix.put(layout.idx_pv_to_pump + t, row, 1.0)
-            matrix.put(layout.idx_pv_curtail + t, row, 1.0)
-            row += 1
+            if prepared.pv_enabled:
+                assert layout.idx_pv_export is not None
+                assert layout.idx_pv_to_pump is not None
+                assert layout.idx_pv_curtail is not None
+                matrix.put(layout.idx_pv_export + t, row, 1.0)
+                matrix.put(layout.idx_pv_to_pump + t, row, 1.0)
+                matrix.put(layout.idx_pv_curtail + t, row, 1.0)
+                row += 1
+            if prepared.wind_enabled:
+                assert layout.idx_wind_export is not None
+                assert layout.idx_wind_to_pump is not None
+                assert layout.idx_wind_curtail is not None
+                matrix.put(layout.idx_wind_export + t, row, 1.0)
+                matrix.put(layout.idx_wind_to_pump + t, row, 1.0)
+                matrix.put(layout.idx_wind_curtail + t, row, 1.0)
+                row += 1
             matrix.put(layout.idx_pump + t, row, 1.0)
             matrix.put(layout.idx_pump_grid + t, row, -1.0)
-            matrix.put(layout.idx_pv_to_pump + t, row, -1.0)
+            if prepared.pv_enabled:
+                assert layout.idx_pv_to_pump is not None
+                matrix.put(layout.idx_pv_to_pump + t, row, -1.0)
+            if prepared.wind_enabled:
+                assert layout.idx_wind_to_pump is not None
+                matrix.put(layout.idx_wind_to_pump + t, row, -1.0)
             row += 1
             matrix.put(layout.idx_turb + t, row, 1.0)
-            matrix.put(layout.idx_pv_export + t, row, 1.0)
+            if prepared.pv_enabled:
+                assert layout.idx_pv_export is not None
+                matrix.put(layout.idx_pv_export + t, row, 1.0)
+            if prepared.wind_enabled:
+                assert layout.idx_wind_export is not None
+                matrix.put(layout.idx_wind_export + t, row, 1.0)
             row += 1
 
     if layout.idx_capacity is not None:
@@ -445,11 +552,16 @@ def build_sparse_model(
         row_lower[row] = -_INF
         row_upper[row] = prepared.turbine_ramp_down_mw
         row += 1
-    if prepared.pv_enabled:
+    if prepared.pv_enabled or prepared.wind_enabled:
         for t in range(n):
-            row_lower[row] = prepared.pv_available_mw[t]
-            row_upper[row] = prepared.pv_available_mw[t]
-            row += 1
+            if prepared.pv_enabled:
+                row_lower[row] = prepared.pv_available_mw[t]
+                row_upper[row] = prepared.pv_available_mw[t]
+                row += 1
+            if prepared.wind_enabled:
+                row_lower[row] = prepared.wind_available_mw[t]
+                row_upper[row] = prepared.wind_available_mw[t]
+                row += 1
             row_lower[row] = 0.0
             row_upper[row] = 0.0
             row += 1

@@ -82,6 +82,8 @@ def _resolved(
     grid_import: float = 1.0,
     grid_export: float = 1.0,
     pv_kw: float = 500.0,
+    pv_region: str = "Belgium",
+    wind_kw: float = 0.0,
     hours: float | None = 4.0,
     activation: str = "balanced",
     e_max: float = 4.444,
@@ -98,6 +100,8 @@ def _resolved(
                 "grid_import_mw": grid_import,
                 "grid_export_mw": grid_export,
                 "pv_ac_kw": pv_kw,
+                "pv_region": pv_region,
+                "wind_capacity_kw": wind_kw,
             },
             "market_case": {"activation_profile": activation, "market": market},
             "period": {"start_date": "2025-01-01", "end_date_inclusive": "2025-12-31"},
@@ -222,6 +226,17 @@ def _write_comparison(
                 market_energy_net_eur=row["market_energy_net_eur"],
                 capacity_revenue_eur=row["capacity_revenue_eur"],
                 pv_revenue_eur=row["pv_revenue_eur"],
+                **{
+                    key: row[key]
+                    for key in (
+                        "wind_revenue_eur",
+                        "wind_available_mwh",
+                        "wind_self_consumed_mwh",
+                        "wind_exported_mwh",
+                        "wind_curtailed_mwh",
+                    )
+                    if key in row
+                },
             ),
             periods=periods,
             monthly_values=monthly_values,
@@ -271,6 +286,7 @@ def test_demo_overview_values_and_ranking() -> None:
     payload = load_result_display(result)
     assert payload["markets"] == ["da", "afrr", "mfrr"]
     assert payload["header"]["markets"] == "Day-ahead · aFRR · mFRR"
+    assert payload["header"]["pv"] == "500 kW · Belgium"
     assert payload["highest_revenue_market"] == "afrr"
     assert [row["market"] for row in payload["rows"]] == ["da", "afrr", "mfrr"]
     da, afrr, mfrr = payload["rows"]
@@ -353,12 +369,24 @@ def test_canonical_order_unchanged() -> None:
 
 def test_operational_table_labels_and_no_difference_column() -> None:
     payload = load_result_display(open_demo_artifacts())
-    table = _overview_table(payload["rows"], one_market=False)
-    one = _overview_table(payload["rows"][:1], one_market=True)
+    table = _overview_table(
+        payload["rows"],
+        one_market=False,
+        pv_included=bool(payload.get("pv_included")),
+        wind_included=bool(payload.get("wind_included")),
+    )
+    one = _overview_table(
+        payload["rows"][:1],
+        one_market=True,
+        pv_included=bool(payload.get("pv_included")),
+        wind_included=bool(payload.get("wind_included")),
+    )
     assert "Rank" not in table
     assert "Rank" not in one
     assert "Difference from highest (EUR)" not in table
     assert "Market energy net (EUR)" not in table
+    assert "Wind revenue (EUR)" not in table
+    assert "Wind self-consumed (%)" not in table
     assert list(table)[:5] == [
         "Market",
         "Total site revenue (EUR)",
@@ -394,9 +422,10 @@ def test_one_market_overview_omits_ranking(tmp_path: Path) -> None:
     assert payload["header"]["pv"] == "Off"
     assert payload["pv_included"] is False
     assert payload["rows"][0]["formatted"]["pv_self_share"] == "—"
-    table = _overview_table(payload["rows"], one_market=True)
+    table = _overview_table(payload["rows"], one_market=True, pv_included=False)
     assert "Rank" not in table
-    assert table["PV self-consumed (%)"] == ["—"]
+    assert "PV self-consumed (%)" not in table
+    assert "PV revenue (EUR)" not in table
     assert "Difference from highest (EUR)" not in table
     assert "Net energy revenue (EUR)" in table
 
@@ -471,7 +500,7 @@ def test_dynamic_heading_and_header_variants(tmp_path: Path) -> None:
     )
     assert multi["one_market"] is False
     assert multi["header"]["balancing"] == "Passive"
-    assert multi["header"]["pv"] == "250.500 kW"
+    assert multi["header"]["pv"] == "250.500 kW · Belgium"
     assert multi["header"]["run_type"] == "Saved demonstration"
     assert multi["header"]["pump_turbine"] == "1.000 / 1.000 MW"
 

@@ -14,8 +14,10 @@ from stepinbel.reporting import (
     ArtifactError,
     MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION,
     MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V2,
+    MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V3,
     RUN_ARTIFACT_SCHEMA_VERSION,
     RUN_ARTIFACT_SCHEMA_VERSION_V2,
+    RUN_ARTIFACT_SCHEMA_VERSION_V3,
     validate_market_comparison_artifacts,
     validate_run_artifacts,
 )
@@ -462,9 +464,14 @@ def _store_receipt(key: tuple[object, ...], receipt: _BindingReceipt) -> None:
 
 
 def _require_case_schema(request: object) -> None:
+    wind_enabled = bool(request.config.wind_enabled())
     active = request.config.machine_commitment.physically_active()
     request_version = int(request.request_schema_version)
     artifact_version = int(request.artifact_schema_version)
+    if wind_enabled:
+        if request_version != 3 or artifact_version != RUN_ARTIFACT_SCHEMA_VERSION_V3:
+            raise ValueError("schema")
+        return
     if active:
         if request_version != 2 or artifact_version != RUN_ARTIFACT_SCHEMA_VERSION_V2:
             raise ValueError("schema")
@@ -486,7 +493,15 @@ def _require_comparison_schema(request: object) -> None:
     _require_case_schema(first)
     parent_request = int(request.comparison_request_schema_version)
     parent_artifact = int(request.comparison_artifact_schema_version)
+    wind_enabled = bool(first.config.wind_enabled())
     active = first.config.machine_commitment.physically_active()
+    if wind_enabled:
+        if (
+            parent_request != 3
+            or parent_artifact != MARKET_COMPARISON_ARTIFACT_SCHEMA_VERSION_V3
+        ):
+            raise ValueError("schema")
+        return
     if active:
         if (
             parent_request != 2

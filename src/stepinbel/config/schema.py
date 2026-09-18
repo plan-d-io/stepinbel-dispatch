@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 StorageHoursBasis = Literal["discharge_at_rated", "stored_energy"]
 PvRevenueMode = Literal["da", "fixed"]
+WindRevenueMode = Literal["da", "fixed"]
 ActivationProfile = Literal["balanced", "passive"]
 
 _BRUSSELS = ZoneInfo("Europe/Brussels")
@@ -17,6 +18,7 @@ _QH = timedelta(minutes=15)
 _ACTIVATION_PROFILES: frozenset[str] = frozenset({"balanced", "passive"})
 _STORAGE_BASES: frozenset[str] = frozenset({"discharge_at_rated", "stored_energy"})
 _PV_MODES: frozenset[str] = frozenset({"da", "fixed"})
+_WIND_MODES: frozenset[str] = frozenset({"da", "fixed"})
 
 
 class ConfigError(ValueError):
@@ -202,7 +204,7 @@ class AssetConfig:
 
 @dataclass(frozen=True)
 class SiteConfig:
-    """Grid connection and optional co-located PV."""
+    """Grid connection and optional co-located PV and wind."""
 
     grid_export_mw: float | None = None
     grid_import_mw: float | None = None
@@ -210,6 +212,10 @@ class SiteConfig:
     pv_region: str | None = "Belgium"
     pv_revenue_mode: PvRevenueMode = "da"
     pv_fixed_price_eur_mwh: float | None = None
+    wind_capacity_kw: float = 0.0
+    wind_profile_id: str | None = "onshore_belgium"
+    wind_revenue_mode: WindRevenueMode = "da"
+    wind_fixed_price_eur_mwh: float | None = None
 
     def __post_init__(self) -> None:
         export = _require_optional_finite(self.grid_export_mw, "grid_export_mw")
@@ -229,6 +235,19 @@ class SiteConfig:
             _require_finite(self.pv_fixed_price_eur_mwh, "pv_fixed_price_eur_mwh")
         elif self.pv_fixed_price_eur_mwh is not None:
             _require_finite(self.pv_fixed_price_eur_mwh, "pv_fixed_price_eur_mwh")
+        wind = _require_finite(self.wind_capacity_kw, "wind_capacity_kw")
+        if wind < 0:
+            raise ConfigError("wind_capacity_kw must be >= 0")
+        _require_allowed_str(self.wind_revenue_mode, "wind_revenue_mode", _WIND_MODES)
+        if wind > 0:
+            if not isinstance(self.wind_profile_id, str) or not self.wind_profile_id.strip():
+                raise ConfigError(
+                    "wind_profile_id must be a non-empty string when wind is enabled"
+                )
+        if self.wind_revenue_mode == "fixed":
+            _require_finite(self.wind_fixed_price_eur_mwh, "wind_fixed_price_eur_mwh")
+        elif self.wind_fixed_price_eur_mwh is not None:
+            _require_finite(self.wind_fixed_price_eur_mwh, "wind_fixed_price_eur_mwh")
 
 
 @dataclass(frozen=True)
@@ -452,6 +471,12 @@ class SimulationConfig:
 
     def pv_enabled(self) -> bool:
         return self.site.pv_ac_kw > 0.0
+
+    def wind_enabled(self) -> bool:
+        return self.site.wind_capacity_kw > 0.0
+
+    def renewables_enabled(self) -> bool:
+        return self.pv_enabled() or self.wind_enabled()
 
     def effective_grid_import_mw(self) -> float:
         if self.site.grid_import_mw is not None:

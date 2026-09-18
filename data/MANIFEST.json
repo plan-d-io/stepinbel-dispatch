@@ -1,15 +1,15 @@
 {
   "pipeline_version": "1.0.0",
-  "built_at_utc": "2026-08-14T17:18:21Z",
-  "git_commit": "8208d06",
+  "built_at_utc": "2026-09-17T20:05:04Z",
+  "git_commit": "2f071d2",
   "pipeline_root": "C:\\Users\\Epyon\\OneDrive - UGent\\Cursor\\PHS\\data_pipeline",
   "partial_build": false,
   "tables": {
     "da_prices_qh": {
-      "rows": 403964,
+      "rows": 410396,
       "coverage_utc": [
         "2015-01-04T23:00:00Z",
-        "2026-07-13T21:45:00Z"
+        "2026-09-18T21:45:00Z"
       ],
       "sources": [
         {
@@ -26,7 +26,7 @@
             "GUI_ENERGY_PRICES_202301010000-202401010000.csv",
             "GUI_ENERGY_PRICES_202401010000-202501010000.csv",
             "GUI_ENERGY_PRICES_202501010000-202601010000.csv",
-            "GUI_ENERGY_PRICES_202601010000-202701010000.csv"
+            "GUI_ENERGY_PRICES_202601010000-202701010000.xlsx"
           ],
           "downloaded_utc": "2026-07-12"
         }
@@ -39,13 +39,13 @@
       "n_upsampled_from_hourly": 376508,
       "n_sequence_collisions": 0,
       "intraday_columns_populated": 0,
-      "sha256": "20d11bf9d3296412b7ae24fef8972d30bc7b8b8977dff7f2fac51502bcbcd646"
+      "sha256": "2ee198b8829baf45b18c13fda8fac24f349a385c9021af1372bb40070aec2ca4"
     },
     "balancing_qh": {
-      "rows": 78144,
+      "rows": 81408,
       "coverage_utc": [
         "2024-05-21T22:00:00Z",
-        "2026-08-13T21:45:00Z"
+        "2026-09-16T21:45:00Z"
       ],
       "sources": [
         {
@@ -53,16 +53,16 @@
           "files": [
             "ods127.parquet"
           ],
-          "downloaded_utc": "2026-08-14",
-          "rows_in": 78144
+          "downloaded_utc": "2026-09-17",
+          "rows_in": 81408
         },
         {
           "dataset": "ods166",
           "files": [
             "ods166.parquet"
           ],
-          "downloaded_utc": "2026-08-14",
-          "rows_in": 78144
+          "downloaded_utc": "2026-09-17",
+          "rows_in": 81408
         }
       ],
       "notes": [
@@ -74,26 +74,26 @@
       "join": {
         "ods127_only": 0,
         "ods166_only": 0,
-        "inner": 78144
+        "inner": 81408
       },
       "n_activated": {
-        "afrr_up": 68479,
-        "afrr_down": 71757,
-        "mfrr_up": 8549,
-        "mfrr_down": 4054
+        "afrr_up": 71157,
+        "afrr_down": 74436,
+        "mfrr_up": 8686,
+        "mfrr_down": 4123
       },
-      "sha256": "4826c208305523a9e6ae033a40f26032519850548c533f3363967b88b60e9094"
+      "sha256": "9bd5f40bb3b81086e9c1810da6ab2e03942c6088f3496d8e71c4b3ff229850b2"
     },
     "capacity_blocks": {
-      "rows": 62196,
+      "rows": 63420,
       "coverage_by_product": {
         "mfrr": [
           "2021-01-01",
-          "2026-08-15"
+          "2026-09-18"
         ],
         "afrr": [
           "2022-05-04",
-          "2026-08-15"
+          "2026-09-18"
         ]
       },
       "missing_delivery_days": {
@@ -154,8 +154,8 @@
         "ods207": {
           "mismatch_n": 0,
           "mismatch_rate": 0.0,
-          "n_compared": 231657,
-          "optimizer_true": 54488,
+          "n_compared": 292442,
+          "optimizer_true": 70433,
           "optimizer_true_zero_awarded": 0,
           "authoritative": "afrr_awarded_volume"
         }
@@ -173,7 +173,7 @@
           "files": [
             "ods206.parquet"
           ],
-          "downloaded_utc": "2026-08-14"
+          "downloaded_utc": "2026-09-17"
         },
         {
           "dataset": "ods125",
@@ -187,17 +187,17 @@
           "files": [
             "ods207.parquet"
           ],
-          "downloaded_utc": "2026-08-14"
+          "downloaded_utc": "2026-09-17"
         }
       ],
       "notes": [
         "ods055 28 missing delivery days are scattered",
         "ods125 missing delivery days: [] (n=0)"
       ],
-      "sha256": "f55ce1b54c1c92df7cff2033058bfd20246f260794dae65b04e9282e31ab114b"
+      "sha256": "ebc122484f46c2caaece1fdef69dda53961ef58d1a27604455da8f7b3679b8c5"
     },
     "capacity_bids": {
-      "rows": 3699211,
+      "rows": 3779118,
       "sources": [
         {
           "dataset": "ods055",
@@ -211,7 +211,7 @@
           "files": [
             "ods206.parquet"
           ],
-          "downloaded_utc": "2026-08-14"
+          "downloaded_utc": "2026-09-17"
         },
         {
           "dataset": "ods125",
@@ -225,19 +225,19 @@
           "files": [
             "ods207.parquet"
           ],
-          "downloaded_utc": "2026-08-14"
+          "downloaded_utc": "2026-09-17"
         }
       ],
       "notes": [
         "awarded bids only; bidid dropped"
       ],
-      "sha256": "02046aebd1a69cf4809c4aa9f3a61c8a8367b016ca750dcb9df9677d72ea5f80"
+      "sha256": "819924867c73c348d223aef45fa8abd6bbcff28cf0189f53ae871be8250cdb7d"
     },
     "pv_profile_qh": {
-      "rows": 2962176,
+      "rows": 3007872,
       "coverage_utc": [
         "2020-07-31T22:00:00Z",
-        "2026-08-13T21:45:00Z"
+        "2026-09-16T21:45:00Z"
       ],
       "n_regions": 14,
       "regions": [
@@ -260,20 +260,227 @@
         {
           "dataset": "ods032",
           "files": [
-            "ods032.parquet"
+            "ods032.parquet",
+            "ods032-original.parquet"
           ],
-          "downloaded_utc": "2026-08-14",
-          "rows_in": 2962176
+          "downloaded_utc": "2026-09-17",
+          "snapshots": [
+            {
+              "filename": "ods032.parquet",
+              "role": "current",
+              "sha256": "461f46a503f652ac9bec8c4bc725e7031268128bbe50cbf46df839af6a6eb244",
+              "rows_in": 2966208,
+              "coverage_utc": [
+                "2020-08-31T22:00:00Z",
+                "2026-09-16T21:45:00Z"
+              ],
+              "rows_contributed": 2966208,
+              "priority": 0,
+              "merge_policy": "authoritative on overlap; complete rows only, never mixed cell-wise",
+              "n_overlap_with_higher_priority": 0,
+              "n_disagreements": 0,
+              "n_disagreements_measured": 0,
+              "n_disagreements_monitored_capacity": 0,
+              "n_disagreements_resolution": 0,
+              "downloaded_utc": "2026-09-17"
+            },
+            {
+              "filename": "ods032-original.parquet",
+              "role": "archive",
+              "sha256": "ac0b859dd0b564a4123ededeb3ccca2ad48adabb454dce117f9c751d408c0480",
+              "rows_in": 2962176,
+              "coverage_utc": [
+                "2020-07-31T22:00:00Z",
+                "2026-08-13T21:45:00Z"
+              ],
+              "rows_contributed": 41664,
+              "priority": 1,
+              "merge_policy": "fills keys absent from current and higher-priority archives; later actual coverage end wins, filename tie-break; complete rows only, never mixed cell-wise",
+              "n_overlap_with_higher_priority": 2920512,
+              "n_disagreements": 0,
+              "n_disagreements_measured": 0,
+              "n_disagreements_monitored_capacity": 0,
+              "n_disagreements_resolution": 0,
+              "acquisition_date_utc": null,
+              "acquisition_date_note": "original acquisition date unknown; identified by filename, coverage, and sha256 (filesystem mtime is not the download date)"
+            }
+          ]
         }
       ],
       "notes": [
         "forecast and confidence columns dropped on read",
-        "Elia loadfactor column not carried; load_factor = measured_mw / monitored_capacity_mw",
+        "Elia loadfactor column not carried; load_factor derived after the winning (datetime_utc, region) row is selected",
+        "ods032.parquet is the required current snapshot and wins every overlapping key",
+        "ods032-original.parquet and ods032-archive-*.parquet fill keys absent from the current snapshot",
+        "among archives, latest actual coverage end wins; filename is the tie-break",
+        "complete rows only; cells are never mixed across snapshots",
+        "archive original acquisition dates are unknown; identified by filename, coverage, and sha256",
         "all regions kept; do not sum (provinces and aggregates both present)",
         "trimmed to Belgian delivery day 2020-01-01 (2019-12-31 23:00:00+00:00)",
         "spatially smoothed provincial profile understates peaks and ramps; curtailment from it is a lower bound"
       ],
-      "sha256": "77f52a1490a16f410454b0470ebaa2de85dd9ba2c73ca5161464de5dc32b5608"
+      "sha256": "fa5043887b8a61f0c0603d35f71a8f68f82e48a8fa36ed753a626ceadd9b9eb3"
+    },
+    "wind_profile_qh": {
+      "rows": 941168,
+      "coverage_utc": [
+        "2019-12-31T23:00:00Z",
+        "2026-09-16T21:45:00Z"
+      ],
+      "n_profiles": 4,
+      "profiles": [
+        "onshore_belgium",
+        "onshore_flanders",
+        "onshore_wallonia",
+        "offshore_belgium"
+      ],
+      "rows_by_profile": {
+        "onshore_belgium": 235292,
+        "onshore_flanders": 235292,
+        "onshore_wallonia": 235292,
+        "offshore_belgium": 235292
+      },
+      "annual_full_load_hours": {
+        "offshore_belgium": {
+          "2020": 3819.888801167779,
+          "2021": 3013.1707716021997,
+          "2022": 2948.048175789567,
+          "2023": 3600.307725946451,
+          "2024": 3125.878315503294,
+          "2025": 2997.470804420235
+        },
+        "onshore_belgium": {
+          "2020": 1778.5018067949657,
+          "2021": 1568.41599874136,
+          "2022": 1607.6675600852002,
+          "2023": 2075.221898259325,
+          "2024": 1758.5419358941624,
+          "2025": 1599.754759811088
+        },
+        "onshore_flanders": {
+          "2020": 1642.3782690927114,
+          "2021": 1465.4684390673613,
+          "2022": 1536.4774453862065,
+          "2023": 2120.39412017046,
+          "2024": 1838.3683481012577,
+          "2025": 1664.5917069316577
+        },
+        "onshore_wallonia": {
+          "2020": 1973.285310317726,
+          "2021": 1713.4584197077306,
+          "2022": 1705.6652349851745,
+          "2023": 2011.2306224148333,
+          "2024": 1651.0555173574276,
+          "2025": 1505.1410039975685
+        }
+      },
+      "repairs": {
+        "negative_measured_clamped": {
+          "n_rows": 14446,
+          "corrected_mwh": 41372.37000000001,
+          "share_of_positive_measured_energy": 0.0005157330991251862,
+          "by_fleet": {
+            "Offshore / Federal / Elia": {
+              "n_rows": 14133,
+              "corrected_mwh": 41356.072499999995
+            },
+            "Onshore / Wallonia / Elia": {
+              "n_rows": 313,
+              "corrected_mwh": 16.2975
+            }
+          }
+        },
+        "trailing_incomplete_trimmed": {
+          "n_timestamps": 96,
+          "coverage_utc": [
+            "2026-09-16T22:00:00Z",
+            "2026-09-17T21:45:00Z"
+          ]
+        },
+        "capacity_forward_filled": {
+          "n_cells": 980,
+          "max_run_qh": 64,
+          "by_fleet": {
+            "Onshore / Flanders / Dso": {
+              "n_cells": 196,
+              "max_run_qh": 64
+            },
+            "Onshore / Flanders / Elia": {
+              "n_cells": 196,
+              "max_run_qh": 64
+            },
+            "Onshore / Wallonia / Dso": {
+              "n_cells": 196,
+              "max_run_qh": 64
+            },
+            "Onshore / Wallonia / Elia": {
+              "n_cells": 196,
+              "max_run_qh": 64
+            },
+            "Offshore / Federal / Elia": {
+              "n_cells": 196,
+              "max_run_qh": 64
+            }
+          }
+        },
+        "measured_interpolated": {
+          "n_timestamps": 4,
+          "n_cells": 20,
+          "max_run_qh": 4,
+          "timestamps_utc": [
+            "2021-10-31T00:00:00Z",
+            "2021-10-31T00:15:00Z",
+            "2021-10-31T00:30:00Z",
+            "2021-10-31T00:45:00Z"
+          ]
+        }
+      },
+      "sources": [
+        {
+          "dataset": "ods031",
+          "files": [
+            "ods031.parquet"
+          ],
+          "downloaded_utc": "2026-09-17",
+          "snapshots": [
+            {
+              "filename": "ods031.parquet",
+              "role": "current",
+              "sha256": "040247f057f273c97895343fb0b8b14606b6299dd4787aa6f29829868efa7182",
+              "rows_in": 1176940,
+              "coverage_utc": [
+                "2019-12-31T23:00:00Z",
+                "2026-09-17T21:45:00Z"
+              ],
+              "rows_contributed": 1176940,
+              "priority": 0,
+              "merge_policy": "authoritative on overlap; complete rows only, never mixed cell-wise",
+              "n_overlap_with_higher_priority": 0,
+              "n_disagreements": 0,
+              "n_disagreements_measured": 0,
+              "n_disagreements_monitored_capacity": 0,
+              "n_disagreements_resolution": 0,
+              "downloaded_utc": "2026-09-17"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "forecast, confidence, decremental-bid and Elia loadfactor columns dropped on read",
+        "four alternative profiles; select exactly one, never sum",
+        "onshore regional profiles sum DSO + Elia components; onshore_belgium sums all four onshore components",
+        "load_factor derived after aggregation as measured_mw / monitored_capacity_mw",
+        "ods031.parquet is the required current snapshot and wins every overlapping key",
+        "ods031-archive-*.parquet fills keys absent from the current snapshot",
+        "among archives, latest actual coverage end wins; filename is the tie-break",
+        "complete rows only; cells are never mixed across snapshots",
+        "archive original acquisition dates are unknown; identified by filename, coverage, and sha256",
+        "negative component measured production clamped to zero before aggregation; derived load_factor is not clipped at 1.0",
+        "trailing incomplete measured production trimmed only when every fleet is unavailable on a shared contiguous suffix",
+        "internal measured gaps of at most 4 shared quarter-hours are time-interpolated; longer or fleet-specific gaps are fatal",
+        "monitored capacity is forward-filled within each fleet (max run 96 QH); never linearly interpolated"
+      ],
+      "sha256": "0317c91d85f7185cb272f653ef46b9b495db1c16304c0200852c58d1aeabf917"
     }
   },
   "validation": {
@@ -283,13 +490,19 @@
       "BAL-CBMP: 12 mFRR down activations have volume but no SA/DA price; cbmp left as NaN (price genuinely absent, not filled from MIP/MDP)",
       "CAP-FLEX: ods055: 18511 rows have mFRR Flex awarded volume > 0 (0 on/after delivery day 2024-05-22); Flex is ignored",
       "CAP-AWARD: ods125: awarded vs step_5 mismatch 132360/6003000 (2.2049%); awarded column taken as authoritative. selected_by_optimizer TRUE with zero awarded: 1/670535",
-      "PV-P1: 70 rows have derived load_factor > 1.2 (0.0024%, max=1.5089); kept, not clipped",
-      "D-2: ods055: 28 missing delivery days in 2021-01-01..2026-05-19 (span 1965, present 1937); first/last 2021-01-04/2025-10-03",
-      "P-1: 70 load_factor values above 1.2 (0.0024%); kept, not clipped",
+      "PV-P1: 70 rows have derived load_factor > 1.2 (0.0023%, max=1.5089); kept, not clipped",
+      "WIND-NEG: clamped 14446 negative measured component rows to 0 (41372.370 MWh); 0.0516% of positive measured energy",
+      "WIND-TRIM: trimmed 96 trailing timestamps where measured production was unavailable for every fleet (2026-09-16T22:00:00Z -> 2026-09-17T21:45:00Z)",
+      "WIND-CAP: forward-filled 980 monitored_capacity cells (max run 64 QH); stepwise, not linearly interpolated",
+      "WIND-MEAS: time-interpolated 4 shared internal measured timestamps (20 cells, max run 4 QH)",
+      "WIND-LF: 100 derived load_factor values above 1.0 (max=1.0304); kept, not clipped",
+      "D-2: ods055 (ods055.parquet): 28 missing delivery days in 2021-01-01..2026-05-19 (span 1965, present 1937); first/last 2021-01-04/2025-10-03",
+      "P-1: 70 load_factor values above 1.2 (0.0023%); kept, not clipped",
+      "WIND-LF: 100 load_factor values above 1.0 (max=1.0304); kept, not clipped",
       "X-2: ods055: days in common 364/1937 (18.8% of parquet); rows compared 692106/692106 of that overlap (100.0% of overlap); 0 value disagreements beyond 1e-06",
       "X-2: ods125: days in common 365/1477 (24.7% of parquet); rows compared 817565/817565 of that overlap (100.0% of overlap); 0 value disagreements beyond 1e-06",
-      "X-2: ods127: quarter-hours in common 67008/78144 (85.7% of parquet); rows compared 65088/67008 of that overlap (97.1% of overlap, 83.3% of parquet); 0 value disagreements beyond 1e-06; 1920 CSV rows not Validated were excluded from the value check (parquet later revised them)",
-      "X-2: ods166: quarter-hours in common 35040/78144 (44.8% of parquet); rows compared 35040/35040 of that overlap (100.0% of overlap, 44.8% of parquet); 0 value disagreements beyond 1e-06"
+      "X-2: ods127: quarter-hours in common 67008/81408 (82.3% of parquet); rows compared 65088/67008 of that overlap (97.1% of overlap, 80.0% of parquet); 0 value disagreements beyond 1e-06; 1920 CSV rows not Validated were excluded from the value check (parquet later revised them)",
+      "X-2: ods166: quarter-hours in common 35040/81408 (43.0% of parquet); rows compared 35040/35040 of that overlap (100.0% of overlap, 43.0% of parquet); 0 value disagreements beyond 1e-06"
     ],
     "crossformat": [
       {
@@ -326,13 +539,13 @@
         "dataset": "ods127",
         "unit": "quarter-hours",
         "csv_n": 67008,
-        "parquet_n": 78144,
+        "parquet_n": 81408,
         "overlap_n": 67008,
-        "overlap_fraction": 0.8574938574938575,
+        "overlap_fraction": 0.8231132075471698,
         "n_rows_overlap": 67008,
         "n_rows_compared": 65088,
         "compared_share_of_overlap": 0.9713467048710601,
-        "compared_share_of_parquet": 0.8329238329238329,
+        "compared_share_of_parquet": 0.7995283018867925,
         "n_compared": 650880,
         "n_mismatch": 0,
         "max_abs_diff": 0.0,
@@ -342,13 +555,13 @@
         "dataset": "ods166",
         "unit": "quarter-hours",
         "csv_n": 35040,
-        "parquet_n": 78144,
+        "parquet_n": 81408,
         "overlap_n": 35040,
-        "overlap_fraction": 0.4484029484029484,
+        "overlap_fraction": 0.43042452830188677,
         "n_rows_overlap": 35040,
         "n_rows_compared": 35040,
         "compared_share_of_overlap": 1.0,
-        "compared_share_of_parquet": 0.4484029484029484,
+        "compared_share_of_parquet": 0.43042452830188677,
         "n_compared": 350400,
         "n_mismatch": 0,
         "max_abs_diff": 0.0

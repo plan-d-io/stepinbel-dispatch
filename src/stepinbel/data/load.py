@@ -10,7 +10,7 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
 from stepinbel.config import AFRRCase, DayAheadCase, MFRRCase, SimulationConfig
-from stepinbel.data.bundle import PublishedDataBundle
+from stepinbel.data.bundle import OPTIONAL_WIND_TABLE, PublishedDataBundle
 from stepinbel.data.coverage import (
     DataAccessError,
     ResolvedPeriod,
@@ -60,6 +60,15 @@ PV_COLUMNS: tuple[str, ...] = (
     "monitored_capacity_mw",
     "load_factor",
 )
+WIND_COLUMNS: tuple[str, ...] = (
+    "datetime_utc",
+    "profile_id",
+    "wind_type",
+    "region",
+    "measured_mw",
+    "monitored_capacity_mw",
+    "load_factor",
+)
 
 
 @dataclass(frozen=True)
@@ -73,6 +82,7 @@ class MarketDataSlice:
     balancing: pa.Table | None
     capacity_blocks: pa.Table | None
     pv_profile: pa.Table | None
+    wind_profile: pa.Table | None = None
 
 
 def load_market_data(
@@ -91,6 +101,7 @@ def load_market_data(
     balancing: pa.Table | None = None
     capacity_blocks: pa.Table | None = None
     pv_profile: pa.Table | None = None
+    wind_profile: pa.Table | None = None
     if isinstance(config.market_case, (MFRRCase, AFRRCase)):
         balancing = _load_qh_table(
             bundle.tables["balancing_qh"].path,
@@ -114,6 +125,18 @@ def load_market_data(
             table_name="pv_profile",
             region=resolved.pv_region,
         )
+    if resolved.wind_profile_id is not None:
+        if OPTIONAL_WIND_TABLE not in bundle.tables:
+            raise DataAccessError(
+                "wind_profile_qh is required when wind generation is enabled"
+            )
+        wind_profile = _load_qh_table(
+            bundle.tables[OPTIONAL_WIND_TABLE].path,
+            WIND_COLUMNS,
+            window,
+            table_name="wind_profile",
+            profile_id=resolved.wind_profile_id,
+        )
     return MarketDataSlice(
         config=config,
         period=resolved,
@@ -122,6 +145,7 @@ def load_market_data(
         balancing=balancing,
         capacity_blocks=capacity_blocks,
         pv_profile=pv_profile,
+        wind_profile=wind_profile,
     )
 
 
@@ -136,12 +160,15 @@ def _load_qh_table(
     *,
     table_name: str,
     region: str | None = None,
+    profile_id: str | None = None,
 ) -> pa.Table:
     filt = (pc.field("datetime_utc") >= _utc_scalar(window.start_utc)) & (
         pc.field("datetime_utc") < _utc_scalar(window.end_exclusive_utc)
     )
     if region is not None:
         filt = filt & (pc.field("region") == pa.scalar(region))
+    if profile_id is not None:
+        filt = filt & (pc.field("profile_id") == pa.scalar(profile_id))
     table = ds.dataset(path, format="parquet").to_table(columns=list(columns), filter=filt)
     if table.column_names != list(columns):
         raise DataAccessError(

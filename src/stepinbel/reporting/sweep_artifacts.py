@@ -13,10 +13,10 @@ from typing import Any, Mapping, Sequence
 from stepinbel.optimizer.types import HIGHS_RANDOM_SEED, SolverOptions
 from stepinbel.reporting.constants import (
     ASSET_SWEEP_INTERPRETATION,
-    ASSET_SWEEP_ROW_FIELDS,
     ASSET_SWEEP_SUMMARY_KEYS,
     ASSET_SWEEP_TOP_LEVEL_FILES,
     MANIFEST_EXCLUDED,
+    asset_sweep_row_fields_for,
 )
 from stepinbel.reporting.io import (
     ArtifactError,
@@ -102,6 +102,12 @@ def _require_finite_number(value: object, field: str) -> float:
     if not math.isfinite(number):
         raise ArtifactError(f"{field} must be a finite number")
     return number
+
+
+def _optional_summary_float(summary: Mapping[str, Any], name: str, prefix: str) -> float:
+    if name not in summary:
+        return 0.0
+    return _require_finite_number(summary[name], f"{prefix}.{name}")
 
 
 def _require_int(value: object, field: str) -> int:
@@ -194,6 +200,13 @@ def _row_from_child(
             diagnostics["simultaneous_interval_energy_net_eur"],
             f"{candidate_id}.simultaneous_interval_energy_net_eur",
         ),
+        wind_revenue_eur=_optional_summary_float(summary, "wind_revenue_eur", candidate_id),
+        wind_available_mwh=_optional_summary_float(summary, "wind_available_mwh", candidate_id),
+        wind_self_consumed_mwh=_optional_summary_float(
+            summary, "wind_self_consumed_mwh", candidate_id
+        ),
+        wind_exported_mwh=_optional_summary_float(summary, "wind_exported_mwh", candidate_id),
+        wind_curtailed_mwh=_optional_summary_float(summary, "wind_curtailed_mwh", candidate_id),
     )
 
 
@@ -282,6 +295,7 @@ def write_asset_sweep_artifacts(
     first_row = rows[0]
     site = request.case_requests[request.candidate_order[0]].config.site
     highest_label = request.candidate_labels[highest_revenue_candidate_id]
+    fields = asset_sweep_row_fields_for(request.asset_sweep_artifact_schema_version)
     summary = {
         "asset_sweep_artifact_schema_version": request.asset_sweep_artifact_schema_version,
         "run_id": request.run_id,
@@ -298,13 +312,13 @@ def write_asset_sweep_artifacts(
         "grid_import_limit_mode": grid_import_limit_mode(site),
         "grid_export_limit_mode": grid_export_limit_mode(site),
         "interpretation": ASSET_SWEEP_INTERPRETATION,
-        "rows": [row_to_payload(row) for row in rows],
+        "rows": [row_to_payload(row, fields) for row in rows],
     }
     atomic_write_json(run_dir / "asset_sweep_summary.json", summary)
     atomic_write_csv(
         run_dir / "asset_sweep_summary.csv",
-        ASSET_SWEEP_ROW_FIELDS,
-        [[getattr(row, name) for name in ASSET_SWEEP_ROW_FIELDS] for row in rows],
+        fields,
+        [[getattr(row, name) for name in fields] for row in rows],
     )
     children: dict[str, object] = {}
     for candidate_id in request.candidate_order:
@@ -621,9 +635,11 @@ def _validate_parent_tree(directory: Path, request: AssetSweepRequest) -> None:
         raise ArtifactError("unexpected subdirectory in the sweep directory")
 
 
-def _validate_csv_rows(path: Path, rows: Sequence[AssetSweepRow]) -> None:
+def _validate_csv_rows(
+    path: Path, rows: Sequence[AssetSweepRow], fields: tuple[str, ...]
+) -> None:
     headers, data = _read_csv(path)
-    if tuple(headers) != ASSET_SWEEP_ROW_FIELDS:
+    if tuple(headers) != fields:
         raise ArtifactError(f"{path.name} headers do not match the row contract")
     if len(data) != len(rows):
         raise ArtifactError(f"{path.name} row count is wrong")
@@ -632,7 +648,7 @@ def _validate_csv_rows(path: Path, rows: Sequence[AssetSweepRow]) -> None:
         if len(row) != width:
             raise ArtifactError(f"{path.name} row {i} does not have {width} cells")
         expected = rows[i]
-        for j, name in enumerate(ASSET_SWEEP_ROW_FIELDS):
+        for j, name in enumerate(fields):
             if row[j] != csv_cell(getattr(expected, name)):
                 raise ArtifactError(f"{path.name} {name}[{i}] does not match")
 
@@ -737,8 +753,9 @@ def _validate_asset_sweep_artifacts(directory: Path) -> Mapping[str, Path]:
         child_provenances
     )
     rows, highest = sweep_rows_from_child_summaries(request, child_summaries)
+    fields = asset_sweep_row_fields_for(request.asset_sweep_artifact_schema_version)
     for row in rows:
-        for name in ASSET_SWEEP_ROW_FIELDS:
+        for name in fields:
             value = getattr(row, name)
             if value is None:
                 if name not in _OPTIONAL_FLOAT_FIELDS:
@@ -775,10 +792,10 @@ def _validate_asset_sweep_artifacts(directory: Path) -> Mapping[str, Path]:
         "grid_import_limit_mode": grid_import_limit_mode(site),
         "grid_export_limit_mode": grid_export_limit_mode(site),
         "interpretation": ASSET_SWEEP_INTERPRETATION,
-        "rows": [row_to_payload(row) for row in rows],
+        "rows": [row_to_payload(row, fields) for row in rows],
     }
     _values_match_exactly(summary, expected_summary, "asset_sweep_summary.json")
-    _validate_csv_rows(directory / "asset_sweep_summary.csv", rows)
+    _validate_csv_rows(directory / "asset_sweep_summary.csv", rows, fields)
 
     metadata = _read_json(directory / "asset_sweep_metadata.json")
     _require_exact_keys(metadata, ASSET_SWEEP_METADATA_KEYS, "asset_sweep_metadata.json")

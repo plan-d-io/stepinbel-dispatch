@@ -12,8 +12,10 @@ from ui.services.form import (
     PRESET_2025,
     STORAGE_HOURS,
     STORAGE_POND,
+    WIND_PROFILE_ONSHORE_BELGIUM,
     coalesce_float,
     default_live_form,
+    resolve_form_pv_region,
 )
 from ui.services.paths import DEMO_COMPARISON_REQUEST
 
@@ -65,8 +67,16 @@ def demo_form() -> dict[str, Any]:
     form["grid_export_mw"] = coalesce_float(site.grid_export_mw, 0.0)
     form["pv_enabled"] = float(site.pv_ac_kw) > 0.0
     form["pv_ac_kw"] = float(site.pv_ac_kw) if float(site.pv_ac_kw) > 0.0 else 500.0
+    form["pv_region"] = resolve_form_pv_region(site.pv_region, default_unknown=True)
     form["pv_revenue_mode"] = site.pv_revenue_mode
     form["pv_fixed_price"] = site.pv_fixed_price_eur_mwh
+    form["wind_enabled"] = float(site.wind_capacity_kw) > 0.0
+    form["wind_capacity_kw"] = (
+        float(site.wind_capacity_kw) if float(site.wind_capacity_kw) > 0.0 else 1000.0
+    )
+    form["wind_profile_id"] = site.wind_profile_id or WIND_PROFILE_ONSHORE_BELGIUM
+    form["wind_revenue_mode"] = site.wind_revenue_mode
+    form["wind_fixed_price"] = site.wind_fixed_price_eur_mwh
     form["detailed_solver"] = False
     balancing = cases.get("afrr") or cases.get("mfrr")
     if balancing is not None:
