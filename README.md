@@ -58,6 +58,10 @@ Completed live results are stored under `outputs/<run-id>/`.
 
 ## Optional co-located generation
 
+PV and wind can be configured independently or together. Co-located generation
+can supply pumping, be exported within the grid limit, or be curtailed. Machine
+operating constraints remain a separate Advanced setting.
+
 ### PV
 
 Co-located PV uses a selectable regional production profile. Belgium is the
@@ -73,12 +77,9 @@ one of four published profiles:
 - Onshore Flanders
 - Onshore Wallonia
 
-Wind can supply pumping, be exported within the grid limit, or be curtailed.
-It is configured independently of PV. Machine operating constraints remain a
-separate Advanced setting.
-
 Configure, Review, Results, Data explorer, Technical details, and Downloads
-show wind when it is included in the stored configuration.
+show configured co-located generation when it is included in the stored
+configuration.
 
 ## Bundled market data
 
