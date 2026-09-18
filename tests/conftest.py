@@ -19,4 +19,4 @@ def data_root(repo_root: Path) -> Path:
 
 @pytest.fixture(scope="session")
 def reference_root(repo_root: Path) -> Path:
-    return repo_root / "reference" / "phs_mvp_0_1_0"
+    return repo_root / "tests" / "fixtures" / "phs_mvp_0_1_0"

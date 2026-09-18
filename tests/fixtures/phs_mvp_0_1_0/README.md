@@ -1,11 +1,14 @@
-# Curated PHS MVP 0.1.0 parity records
+# PHS MVP 0.1.0 parity fixtures
 
-This directory keeps four accepted PHS result-metadata files as numerical
-parity evidence for later solver-port briefs.
+These are frozen regression fixtures. They compare current StepInBel results
+with accepted PHS MVP 0.1.0 metadata.
 
 The records come from the accepted PHS tag `phs-mvp-0.1.0`, commit
-`82691dad676f85bfd345670fb8022de079ca5578`. Only metadata is retained. Dispatch
-CSVs, plots, reports, and solver outputs are excluded because later parity
+`82691dad676f85bfd345670fb8022de079ca5578`. They contain metadata only, not
+complete dispatch outputs. Automated parity tests use them; they are not
+runtime application data.
+
+Dispatch CSVs, plots, reports, and solver outputs are excluded because parity
 compares objective values and aggregates within stated tolerances. Identical
 dispatch is not required when alternate optima exist.
 
